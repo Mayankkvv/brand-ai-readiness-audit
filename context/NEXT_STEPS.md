@@ -1,6 +1,7 @@
 # NEXT STEPS (high-level plan — for orientation only, not a multi-step dump)
 
-1. Initialize repository and context system  <-- Step 1 (this step)
+1. Initialize repository and context system  <-- DONE (Step 1)
+2. Create marketplace.json and skills/ folder skeleton  <-- DONE (Step 2)
 2. Create marketplace.json and skills/ folder skeleton
 3. Create audit-orchestrator skill (SKILL.md + scripts scaffold)
 4. Create crawl-render-audit skill (robots/sitemap/HTTP checks)

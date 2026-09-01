@@ -1,24 +1,25 @@
 # DEVELOPMENT STATE
 
 Current step:
-Step 1 — Project Initialization & Context System (COMPLETE)
+Step 2 — Marketplace Manifest & Skills Folder Skeleton (COMPLETE)
 
 Completed:
-- Project root folder created
-- Git repository initialized, remote added, pushed to GitHub
-- Python virtual environment created (.venv)
-- context/ directory created with all six tracking files
-- .gitignore created
-- requirements.txt created (empty placeholder — no deps yet)
+- Project root folder created, Git repo pushed to GitHub (Step 1)
+- context/ directory with all six tracking files (Step 1)
+- marketplace.json created, registering all four skills with
+  audit-orchestrator as the sole entrypoint
+- skills/ folder skeleton created for all four skills, each with
+  scripts/ and references/ subfolders and a placeholder SKILL.md
 
 Current implementation:
-Scaffolding only. No skills, no orchestrator, no Gemini integration, no crawler yet.
+Structural skeleton only. SKILL.md files contain frontmatter + section headers but
+no real procedure logic yet. No Python code, no Gemini integration, no crawler yet.
 
 Known issues:
 None yet.
 
 Last successful test:
-Folder structure and git status verified manually (Step 1).
+Folder/file structure and marketplace.json JSON validity verified manually (Step 2).
 
 Last Git commit:
-"Step 1: project init, venv, context system" — pushed to origin/main.
+"Step 2: marketplace.json and skills folder skeleton" — pending push.

@@ -1,0 +1,2 @@
+# Dependencies will be added incrementally as each skill is implemented.
+# Do not pip install anything from this file yet — it's intentionally empty at Step 1.

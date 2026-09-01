@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.env.*
+*.log
+.pytest_cache/
+.mypy_cache/
+node_modules/
+*.zip
+.DS_Store
+Thumbs.db
+crawl_output/
+.cache/

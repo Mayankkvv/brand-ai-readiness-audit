@@ -46,7 +46,6 @@ class Finding(BaseModel):
     evidence: str = Field(..., min_length=1, description="Specific, measurable evidence.")
     suggested_action: SuggestedAction
 
-    # Optional enrichment fields (encouraged by the Adobe brief, not required).
     category: Optional[str] = None
     confidence: Optional[float] = Field(
         default=None, ge=0.0, le=1.0, description="0-1 confidence in this finding."
@@ -95,6 +94,14 @@ class AuditReport(BaseModel):
     )
     summary: Summary = Field(default_factory=Summary)
     findings: List[Finding] = Field(default_factory=list)
+
+    # Raw evidence collected by the specialist skills, prior to LLM reasoning
+    # into Findings. Populated starting Step 10; will be consumed (and could
+    # eventually be trimmed from the final report) once the Gemini reasoning
+    # layer turns these into real Findings (Step 12+). Kept as a normal field
+    # rather than a "debug" one since transparency into raw evidence is
+    # explicitly encouraged by the brief's "additional fields" guidance.
+    observations: List[Observation] = Field(default_factory=list)
 
     def recompute_summary(self) -> None:
         """Recalculate summary counts from the current findings list."""

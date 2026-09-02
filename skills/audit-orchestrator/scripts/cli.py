@@ -1,10 +1,11 @@
 """
 Command-line entrypoint for the audit-orchestrator skill.
 
-Current capability (Step 3): accepts a website URL, validates/normalizes it,
-and emits a well-formed (but empty) AuditReport as JSON. This proves the
-shared schema and CLI wiring work end-to-end before any real crawling or
-Gemini reasoning is added in later steps.
+Step 10: validates the input URL, calls all three specialist skills via
+skill_runner, aggregates their raw Observations onto the AuditReport, and
+prints the result. Turning Observations into real Findings (via Gemini
+reasoning, deduplication, severity/priority assignment) is not yet
+implemented - see context/NEXT_STEPS.md.
 """
 
 from __future__ import annotations
@@ -14,25 +15,25 @@ import logging
 import sys
 from pathlib import Path
 
-# Skill folder names contain hyphens (e.g. "audit-orchestrator"), which are
-# not valid Python package names, so this script is run standalone rather
-# than imported as part of a package. We add the project root to sys.path
-# so the shared `common` package can be imported regardless of the
-# directory this script is invoked from.
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from common.schema import AuditReport  # noqa: E402
 from common.url_utils import validate_and_normalize_url  # noqa: E402
 
+from skill_runner import run_all_specialist_skills  # sibling module, same folder
+
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger("audit-orchestrator")
 
 
-def build_placeholder_report(url: str) -> AuditReport:
-    """Build an empty-findings report for a validated URL."""
-    report = AuditReport(site=url)
-    report.recompute_summary()
+def run_audit(url: str) -> AuditReport:
+    """Validate the URL, run all specialist skills, and assemble the report."""
+    normalized_url = validate_and_normalize_url(url)
+    observations = run_all_specialist_skills(normalized_url)
+
+    report = AuditReport(site=normalized_url, observations=observations)
+    report.recompute_summary()  # findings are still empty at this step
     return report
 
 
@@ -45,18 +46,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        normalized_url = validate_and_normalize_url(args.url)
+        report = run_audit(args.url)
     except ValueError as exc:
         logger.error(str(exc))
         return 1
 
-    logger.info("Validated URL: %s", normalized_url)
     logger.info(
-        "Specialist skills (crawl-render-audit, freshness-corroboration, "
-        "engagement-audit) are not implemented yet - emitting an empty report."
+        "Collected %d observations across all specialist skills. "
+        "Finding generation (Gemini reasoning) is not yet implemented.",
+        len(report.observations),
     )
-
-    report = build_placeholder_report(normalized_url)
     print(report.model_dump_json(indent=2))
     return 0
 

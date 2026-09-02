@@ -186,3 +186,39 @@ own content would be circular (the page could never "misalign" with a guess
 derived from itself) and would produce fake-looking findings with no real
 evidence behind them - directly against the project's evidence-first
 principle.
+
+
+Decision: Load each specialist skill's script modules via
+`importlib.util.spec_from_file_location()` inside a new skill_runner.py,
+rather than restructuring skill folders into importable Python packages.
+Reason: Skill folder names (e.g. "audit-orchestrator", "crawl-render-audit")
+are required by the Adobe Agent Skills format and contain hyphens, which are
+invalid in Python package/module names. Dynamic file-path loading lets each
+skill's scripts stay runnable both standalone (as already tested in Steps
+4-9) and from the orchestrator, without renaming any skill folder.
+
+Decision: Wrap each specialist check individually in skill_runner.py so one
+failing check becomes an error Observation rather than raising and aborting
+the whole audit.
+Reason: Directly required by the brief's failure-handling section - "one
+failed page must not crash the entire audit" and "clearly distinguish 'not
+checked' from 'checked and no issue found'." An error Observation makes a
+failed check visible and inspectable rather than silently dropped or fatal.
+
+Decision: Add an `observations` field directly to `AuditReport` rather than
+keeping raw evidence in a separate, unlogged data structure.
+Reason: The brief explicitly encourages "additional fields... when useful"
+in the final report, and surfacing raw evidence supports transparency and
+easier debugging while the reasoning layer doesn't exist yet. This field may
+be trimmed or renamed once Gemini reasoning is built and evidence is
+consumed rather than displayed directly - noted in DEVELOPMENT_STATE.md.
+
+Decision: Defer consolidating crawl-render-audit's and engagement-audit's
+multiple independent Playwright render passes into one shared pass, rather
+than doing it as part of this step.
+Reason: Wiring the orchestrator (calling all skills, aggregating evidence,
+fault isolation) is already a meaningful, testable unit of work on its own.
+Combining it with a nontrivial rendering-architecture change would violate
+the "one step at a time" / "build one capability at a time" development
+rule. Performance optimization is explicitly listed as a dedicated later
+step in NEXT_STEPS.md.

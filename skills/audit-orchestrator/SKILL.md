@@ -15,23 +15,34 @@ full AI discoverability + engagement audit.
 
 ## Procedure
 1. Receive and validate the input URL (`common/url_utils.py`), rejecting empty or
-   malformed input with a clear error.
-2. *(not yet implemented)* Call crawl-render-audit, freshness-corroboration, and
-   engagement-audit, passing the validated URL to each.
-3. *(not yet implemented)* Collect each skill's evidence/observations.
-4. *(not yet implemented)* Normalize, deduplicate, and resolve conflicting findings.
-5. *(not yet implemented)* Send aggregated evidence to Gemini for reasoning about
-   severity, impact, and recommendations.
-6. *(not yet implemented)* Validate the final findings against `common/schema.py`
-   and assemble the report.
-7. Return the final `AuditReport` as JSON.
+   malformed input with a clear error. **[DONE]**
+2. Call crawl-render-audit, freshness-corroboration, and engagement-audit,
+   passing the validated URL to each (`scripts/skill_runner.py::run_all_specialist_skills`).
+   **[DONE]**
+3. Collect each skill's raw evidence as `Observation` objects, attached to the
+   report's `observations` field. **[DONE]** A single failing check is caught
+   and recorded as an error Observation rather than crashing the whole audit.
+4. *(not yet implemented)* Normalize, deduplicate, and resolve conflicting
+   findings.
+5. *(not yet implemented)* Send aggregated evidence to Gemini for reasoning
+   about severity, impact, and recommendations, turning Observations into
+   real Findings.
+6. *(not yet implemented)* Validate the final findings against
+   `common/schema.py` and assemble the final `findings`/`summary` fields.
+7. Return the `AuditReport` as JSON. **[DONE]** (currently with populated
+   `observations` but empty `findings`, since step 5 doesn't exist yet).
 
-**Current capability (Step 3):** step 1 and step 7 only — the CLI validates a URL
-and emits an empty-findings report, proving the schema and wiring are correct.
+Run it with:
+python skills/audit-orchestrator/scripts/cli.py <url>
 
-Run it with:python skills/audit-orchestrator/scripts/cli.py <url>
 
+**Known limitation:** each rendering-dependent check (render diff, structured
+data, image OCR, engagement checks) currently opens its own independent
+Playwright browser session, so one orchestrator run renders the target page
+multiple times. This will be consolidated into a single shared render pass
+in a dedicated runtime-optimization step.
 
 ## Output
-A final JSON audit report matching `common/schema.py` / the schema documented in
-`context/PROJECT_CONTEXT.md` (site, audited_at, summary, findings[]).
+A JSON `AuditReport` (`common/schema.py`): `site`, `audited_at`, `summary`,
+`findings` (currently always empty), and `observations` (the raw evidence
+collected so far).

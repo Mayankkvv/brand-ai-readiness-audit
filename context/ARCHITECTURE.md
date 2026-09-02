@@ -18,10 +18,18 @@ Python package names, so shared code lives outside `skills/`):
     inspect actual rendered layout (e.g. what's visible above the fold).
 
 ## audit-orchestrator (entrypoint)
-`skills/audit-orchestrator/scripts/cli.py`:
-- Validates the input URL and currently prints an empty-findings
-  `AuditReport`. Not yet implemented: calling the three specialist skills,
-  evidence aggregation, deduplication, Gemini reasoning, final validation.
+`skills/audit-orchestrator/scripts/`:
+- `skill_runner.py::run_all_specialist_skills()` — dynamically loads each
+  specialist skill's script module by file path (via `importlib.util`,
+  since skill folder names contain hyphens and aren't valid Python package
+  names), calls its check function(s), and aggregates every returned
+  `Observation` into one list. Each check is individually wrapped so a
+  failure becomes an error Observation instead of crashing the run.
+- `cli.py::run_audit()` — validates the URL, calls `run_all_specialist_skills()`,
+  and assembles an `AuditReport` with the collected `observations` (findings
+  still empty - no Gemini reasoning layer yet).
+- Not yet implemented: deduplication, Gemini reasoning, severity/priority
+  assignment, final Finding validation.
 
 ## crawl-render-audit (feature-complete, hardened)
 `skills/crawl-render-audit/scripts/`:
@@ -79,9 +87,9 @@ Website URL
              -> readability (content clarity)                [DONE]
              -> intent-to-landing alignment                    [TODO - needs assumed intent input]
              -> context retention                              [TODO - needs assumed intent input]
-   -> combined evidence                                    [TODO - not wired yet]
+   -> combined evidence                                    [DONE - AuditReport.observations]
    -> Gemini reasoning                                     [TODO]
    -> finding validation / deduplication                   [TODO]
    -> severity + priority                                  [TODO]
-   -> AuditReport (common/schema.py)                       [DONE, empty findings only]
+   -> AuditReport (common/schema.py)                       [DONE - findings still always empty]
 ```

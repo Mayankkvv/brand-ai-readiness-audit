@@ -2,7 +2,7 @@
 
 1. Initialize repository and context system  <-- DONE (Step 1)
 2. Create marketplace.json and skills/ folder skeleton  <-- DONE (Step 2)
-2. Create marketplace.json and skills/ folder skeleton
+3. Build shared schema + working orchestrator CLI  <-- DONE (Step 3)
 3. Create audit-orchestrator skill (SKILL.md + scripts scaffold)
 4. Create crawl-render-audit skill (robots/sitemap/HTTP checks)
 5. Add Playwright rendering + raw-vs-rendered HTML diff

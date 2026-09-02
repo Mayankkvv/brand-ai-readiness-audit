@@ -28,23 +28,29 @@ extractability of a website's content.
 6. Inspect structured data (JSON-LD, microdata, OpenGraph via `extruct`) in both
    raw and rendered HTML: presence, declared schema.org types, and whether
    JSON-LD only appears after rendering (`scripts/structured_data_checks.py`).
-   **[DONE]** Absence of structured data is reported as a fact, not
-   automatically a problem — that judgment depends on page type and is made
-   later.
-7. *(not yet implemented)* Detect important facts exposed only via images/visual
-   content with no equivalent readable text.
+   **[DONE]**
+7. Scan a bounded set of content-sized images (skipping icons/logos/tracking
+   pixels) with OCR (Tesseract via `pytesseract`), and measure how much of the
+   extracted text already appears in the page's visible text
+   (`scripts/image_checks.py::run_image_text_checks`). **[DONE]** A low overlap
+   ratio is a measured gap, not automatically a finding — whether the missing
+   text represents an important claim is judged later.
 8. Return all findings as a list of `Observation` objects (`common/schema.py`) -
    raw measured facts, not yet judged as problems.
+
+**crawl-render-audit's planned checks are now complete.** Remaining work for this
+skill is wiring it into audit-orchestrator (Step 10+).
 
 ## Output
 A list of `Observation` objects to be consumed by audit-orchestrator. Each
 observation has `id`, `skill`, `category`, `description`, and a `data` dict with
 the specific measured values (status codes, counts, URLs, word counts,
-structured-data types, etc.).
+structured-data types, OCR text samples, etc.).
 
 Run the checks standalone with:
 ```
 python skills/crawl-render-audit/scripts/access_checks.py <url>
 python skills/crawl-render-audit/scripts/render_checks.py <url>
 python skills/crawl-render-audit/scripts/structured_data_checks.py <url>
+python skills/crawl-render-audit/scripts/image_checks.py <url>
 ```

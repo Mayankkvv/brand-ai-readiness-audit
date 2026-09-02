@@ -36,6 +36,13 @@ Python package names, so shared code lives outside `skills/`):
   JSON-LD/microdata/OpenGraph via `extruct` from both raw and rendered HTML,
   reports counts + declared schema.org types, and flags whether JSON-LD only
   appears after rendering.
+- `image_checks.py::run_image_text_checks()` — finds content-sized `<img>` tags
+  (filtering out icons/logos/tracking pixels by filename and dimensions), OCRs
+  up to 8 of the largest via Tesseract/pytesseract, and reports word-overlap
+  ratio between each image's extracted text and the page's visible text.
+
+**crawl-render-audit is now feature-complete** (all four planned checks
+implemented). Remaining work: wiring into audit-orchestrator.
 
 ## Specialist skills (remaining)
 `freshness-corroboration`, `engagement-audit` — SKILL.md placeholders only, no
@@ -52,6 +59,7 @@ Website URL
              -> sitemap discovery/parsing                [DONE]
              -> Playwright render diff                   [TODO]
              -> structured data (extruct)                [DONE]
+             -> hidden image-text detection (OCR)        [DONE]
         -> freshness-corroboration                       [TODO]
         -> engagement-audit                              [TODO]
    -> combined evidence                                  [TODO - not wired yet]

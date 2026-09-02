@@ -100,3 +100,32 @@ structured_data_checks.py back-to-back on the same URL currently launches two
 separate Playwright browser sessions. Acceptable for now since each script is
 independently runnable/testable; the orchestrator will need to consolidate
 this into one shared render pass to stay within the 5-minute runtime budget.
+
+
+Decision: Use OCR (Tesseract via pytesseract) rather than Gemini Vision to detect
+text embedded in images.
+Reason: Keeps this check deterministic and reproducible, consistent with the
+"deterministic before LLM" principle - the same image always produces the same
+extracted text. It also avoids spending scarce Gemini free-tier calls on a raw
+extraction task; Gemini's reasoning is reserved for judging whether an
+extracted claim actually matters, which happens later.
+
+Decision: Filter candidate images by filename hints (icon/logo/sprite/favicon/
+avatar) and minimum dimensions (200x120), and cap scanning to the 8 largest
+images per page.
+Reason: Avoids wasting OCR time on decorative UI chrome, keeps the check
+generic (no site-specific rules), and bounds runtime per the 5-minute total
+audit budget.
+
+Decision: Measure "text only in image" via word-overlap ratio (OCR words also
+found in page visible text) rather than exact substring matching.
+Reason: OCR output often has minor spacing/casing/line-break differences from
+how the same text might be phrased elsewhere on the page; word-set overlap is
+more robust to that noise while still being simple and explainable.
+
+Known limitation (not yet addressed): crawl-render-audit's three
+rendering-dependent scripts (render_checks, structured_data_checks,
+image_checks) each currently launch a separate Playwright session against the
+same URL. This will be consolidated into a single shared render pass when the
+orchestrator wires these scripts together, both for runtime efficiency and to
+guarantee all three see the identical rendered snapshot.

@@ -47,3 +47,26 @@ Decision: Send a descriptive custom User-Agent (`BrandAIReadinessAuditor/0.1`) o
 all outbound requests.
 Reason: Matches the "safe by default" / respectful-crawling requirement - lets
 webmasters identify the audit bot in their logs.
+
+
+
+Decision: Use Playwright's synchronous API (`sync_playwright`) rather than the
+async API for render_checks.py.
+Reason: Each skill script currently runs standalone via a simple CLI; sync
+Playwright keeps the script simple and matches the style of the other
+deterministic check scripts. Can be revisited if the orchestrator later needs
+to run render checks concurrently across many pages.
+
+Decision: Measure raw-vs-rendered content gap using word-count delta + a
+difflib similarity ratio, rather than deep DOM diffing or field-specific
+extraction (e.g. searching for "price" patterns).
+Reason: Keeps the check fully generic and pattern-based per Adobe's
+generalization requirement — it works on any unseen website, not just ones
+with a known layout. Field-specific extraction (e.g. detecting a price) would
+be a hardcoded, site-specific rule and is explicitly the kind of thing the
+brief says to avoid at this layer; that reasoning is deferred to Gemini once
+real evidence is aggregated.
+
+Decision: Cap text compared by difflib to the first 20,000 characters per page.
+Reason: Keeps runtime bounded and predictable on very large pages, supporting
+the 5-minute total audit runtime requirement.

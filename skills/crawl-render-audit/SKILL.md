@@ -22,8 +22,12 @@ extractability of a website's content.
 4. Discover and parse a sitemap, preferring robots.txt-declared sitemaps and
    falling back to `/sitemap.xml`; report URL count and sample URLs
    (`scripts/access_checks.py::discover_sitemap`). **[DONE]**
-5. *(not yet implemented)* Render the page with Playwright and diff raw HTML vs.
-   the rendered DOM to detect JavaScript-dependent content.
+5. Render the homepage with Playwright and compare its visible text against the
+   plain-HTTP-fetched HTML: word count delta, percentage increase, and text
+   similarity ratio (`scripts/render_checks.py::run_render_checks`). **[DONE]**
+   This is a measurement only — a content gap here is not automatically a
+   problem; whether it matters is decided later using the actual affected
+   content, not just the presence of a gap.
 6. *(not yet implemented)* Inspect structured data (JSON-LD via extruct) for
    presence, validity, and consistency with visible content.
 7. *(not yet implemented)* Detect important facts exposed only via images/visual
@@ -34,9 +38,10 @@ extractability of a website's content.
 ## Output
 A list of `Observation` objects to be consumed by audit-orchestrator. Each
 observation has `id`, `skill`, `category`, `description`, and a `data` dict with
-the specific measured values (status codes, counts, URLs, etc.).
+the specific measured values (status codes, counts, URLs, word counts, etc.).
 
-Run it standalone with:
+Run the checks standalone with:
 ```
 python skills/crawl-render-audit/scripts/access_checks.py <url>
+python skills/crawl-render-audit/scripts/render_checks.py <url>
 ```

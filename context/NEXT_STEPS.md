@@ -5,7 +5,7 @@
 3. Build shared schema + working orchestrator CLI  <-- DONE (Step 3)
 3. Create audit-orchestrator skill (SKILL.md + scripts scaffold)
 4. crawl-render-audit: HTTP/robots.txt/sitemap checks  <-- DONE (Step 4)
-5. Add Playwright rendering + raw-vs-rendered HTML diff
+5. crawl-render-audit: Playwright render diff  <-- DONE (Step 5)
 6. Add structured data (JSON-LD/extruct) checks
 7. Create freshness-corroboration skill
 8. Create engagement-audit skill

@@ -25,7 +25,8 @@ from typing import Any, Dict
 import httpx
 from bs4 import BeautifulSoup
 from playwright.sync_api import Error as PlaywrightError
-from playwright.sync_api import sync_playwright
+
+from fetchers import fetch_raw_html, fetch_rendered_html  # sibling module, same folder
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -36,33 +37,8 @@ from common.url_utils import validate_and_normalize_url  # noqa: E402
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger("crawl-render-audit.render_checks")
 
-USER_AGENT = "BrandAIReadinessAuditor/0.1 (read-only research/hackathon audit bot)"
-HTTP_TIMEOUT_SECONDS = 10.0
-RENDER_TIMEOUT_MS = 15_000
 # Cap text compared with difflib to keep this fast and memory-bounded on huge pages.
 MAX_COMPARE_CHARS = 20_000
-
-
-def fetch_raw_html(url: str) -> str:
-    """Fetch the page with a plain HTTP client (no JavaScript execution)."""
-    with httpx.Client(
-        timeout=HTTP_TIMEOUT_SECONDS, headers={"User-Agent": USER_AGENT}
-    ) as client:
-        response = client.get(url, follow_redirects=True)
-        response.raise_for_status()
-        return response.text
-
-
-def fetch_rendered_html(url: str) -> str:
-    """Fetch the page with a real headless browser, after JS execution."""
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        try:
-            page = browser.new_page(user_agent=USER_AGENT)
-            page.goto(url, wait_until="networkidle", timeout=RENDER_TIMEOUT_MS)
-            return page.content()
-        finally:
-            browser.close()
 
 
 def extract_visible_text(html: str) -> str:
@@ -86,7 +62,6 @@ def compute_render_diff(raw_html: str, rendered_html: str) -> Dict[str, Any]:
         round((word_count_delta / raw_word_count) * 100, 1) if raw_word_count > 0 else None
     )
 
-    # Similarity ratio over a bounded prefix of each text (1.0 = identical text).
     matcher = difflib.SequenceMatcher(
         None, raw_text[:MAX_COMPARE_CHARS], rendered_text[:MAX_COMPARE_CHARS]
     )

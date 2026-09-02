@@ -70,3 +70,33 @@ real evidence is aggregated.
 Decision: Cap text compared by difflib to the first 20,000 characters per page.
 Reason: Keeps runtime bounded and predictable on very large pages, supporting
 the 5-minute total audit runtime requirement.
+
+
+Decision: Extract fetch_raw_html()/fetch_rendered_html() out of render_checks.py
+into a new skills/crawl-render-audit/scripts/fetchers.py, shared by
+render_checks.py and structured_data_checks.py.
+Reason: Both scripts needed identical raw-HTTP and Playwright-rendering logic;
+duplicating it would violate the project's "modular functions, small focused
+modules" engineering principle. Kept local to this skill (not in common/)
+since it's crawl-render-audit-specific fetch mechanics, not shared across
+skills.
+
+Decision: Use extruct's `uniform=True` output mode for structured data
+extraction, and only check json-ld, microdata, and opengraph syntaxes (not
+RDFa or microformat).
+Reason: uniform=True gives a consistent, simpler item shape across syntaxes.
+JSON-LD, microdata, and OpenGraph cover the vast majority of real-world
+schema.org and social-metadata usage; RDFa/microformat are rare enough on
+modern sites that including them would add complexity without much signal.
+
+Decision: Do not treat "no structured data found" as a finding at this layer -
+only report counts/types/presence as an Observation.
+Reason: Matches the project's explicit guidance that "no JSON-LD = always bad"
+is too simplistic; whether missing structured data matters depends on page
+type, which is a judgment made later using aggregated evidence, not here.
+
+Known limitation (not yet addressed): running render_checks.py and
+structured_data_checks.py back-to-back on the same URL currently launches two
+separate Playwright browser sessions. Acceptable for now since each script is
+independently runnable/testable; the orchestrator will need to consolidate
+this into one shared render pass to stay within the 5-minute runtime budget.

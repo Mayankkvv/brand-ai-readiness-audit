@@ -6,7 +6,7 @@
 3. Create audit-orchestrator skill (SKILL.md + scripts scaffold)
 4. crawl-render-audit: HTTP/robots.txt/sitemap checks  <-- DONE (Step 4)
 5. crawl-render-audit: Playwright render diff  <-- DONE (Step 5)
-6. Add structured data (JSON-LD/extruct) checks
+6. crawl-render-audit: structured data checks (extruct)  <-- DONE (Step 6)
 7. Create freshness-corroboration skill
 8. Create engagement-audit skill
 9. Build evidence aggregation layer in orchestrator

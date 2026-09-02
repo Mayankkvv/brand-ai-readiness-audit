@@ -25,11 +25,12 @@ extractability of a website's content.
 5. Render the homepage with Playwright and compare its visible text against the
    plain-HTTP-fetched HTML: word count delta, percentage increase, and text
    similarity ratio (`scripts/render_checks.py::run_render_checks`). **[DONE]**
-   This is a measurement only — a content gap here is not automatically a
-   problem; whether it matters is decided later using the actual affected
-   content, not just the presence of a gap.
-6. *(not yet implemented)* Inspect structured data (JSON-LD via extruct) for
-   presence, validity, and consistency with visible content.
+6. Inspect structured data (JSON-LD, microdata, OpenGraph via `extruct`) in both
+   raw and rendered HTML: presence, declared schema.org types, and whether
+   JSON-LD only appears after rendering (`scripts/structured_data_checks.py`).
+   **[DONE]** Absence of structured data is reported as a fact, not
+   automatically a problem — that judgment depends on page type and is made
+   later.
 7. *(not yet implemented)* Detect important facts exposed only via images/visual
    content with no equivalent readable text.
 8. Return all findings as a list of `Observation` objects (`common/schema.py`) -
@@ -38,10 +39,12 @@ extractability of a website's content.
 ## Output
 A list of `Observation` objects to be consumed by audit-orchestrator. Each
 observation has `id`, `skill`, `category`, `description`, and a `data` dict with
-the specific measured values (status codes, counts, URLs, word counts, etc.).
+the specific measured values (status codes, counts, URLs, word counts,
+structured-data types, etc.).
 
 Run the checks standalone with:
 ```
 python skills/crawl-render-audit/scripts/access_checks.py <url>
 python skills/crawl-render-audit/scripts/render_checks.py <url>
+python skills/crawl-render-audit/scripts/structured_data_checks.py <url>
 ```

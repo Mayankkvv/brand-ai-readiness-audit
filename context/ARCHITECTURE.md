@@ -25,6 +25,17 @@ Python package names, so shared code lives outside `skills/`):
 - Runs standalone via CLI; not yet called by audit-orchestrator.
 - TODO: Playwright rendering diff, structured data (extruct) checks, hidden
   non-text fact detection.
+- `render_checks.py::run_render_checks()` — fetches raw HTML (httpx) and
+  rendered HTML (Playwright/Chromium), extracts visible text from each via
+  BeautifulSoup, and reports word-count delta, % increase, and a difflib
+  similarity ratio as a single Observation.
+- `fetchers.py` — shared `fetch_raw_html()` / `fetch_rendered_html()` helpers,
+  used by both render_checks.py and structured_data_checks.py (introduced in
+  Step 6 to avoid duplicating fetch logic within this skill).
+- `structured_data_checks.py::run_structured_data_checks()` — extracts
+  JSON-LD/microdata/OpenGraph via `extruct` from both raw and rendered HTML,
+  reports counts + declared schema.org types, and flags whether JSON-LD only
+  appears after rendering.
 
 ## Specialist skills (remaining)
 `freshness-corroboration`, `engagement-audit` — SKILL.md placeholders only, no
@@ -40,7 +51,7 @@ Website URL
              -> robots.txt                              [DONE]
              -> sitemap discovery/parsing                [DONE]
              -> Playwright render diff                   [TODO]
-             -> structured data (extruct)                [TODO]
+             -> structured data (extruct)                [DONE]
         -> freshness-corroboration                       [TODO]
         -> engagement-audit                              [TODO]
    -> combined evidence                                  [TODO - not wired yet]

@@ -26,18 +26,16 @@ import httpx
 from bs4 import BeautifulSoup
 from playwright.sync_api import Error as PlaywrightError
 
-from fetchers import fetch_raw_html, fetch_rendered_html  # sibling module, same folder
-
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from common.fetch_utils import fetch_raw_html, fetch_rendered_html  # noqa: E402
 from common.schema import Observation  # noqa: E402
 from common.url_utils import validate_and_normalize_url  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger("crawl-render-audit.render_checks")
 
-# Cap text compared with difflib to keep this fast and memory-bounded on huge pages.
 MAX_COMPARE_CHARS = 20_000
 
 

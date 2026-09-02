@@ -23,11 +23,10 @@ import extruct
 import httpx
 from playwright.sync_api import Error as PlaywrightError
 
-from fetchers import fetch_raw_html, fetch_rendered_html  # sibling module, same folder
-
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from common.fetch_utils import fetch_raw_html, fetch_rendered_html  # noqa: E402
 from common.schema import Observation  # noqa: E402
 from common.url_utils import validate_and_normalize_url  # noqa: E402
 
@@ -53,7 +52,7 @@ def extract_structured_data(html: str, base_url: str) -> Dict[str, Any]:
     """Run extruct against an HTML document and summarize what was found."""
     try:
         data = extruct.extract(html, base_url=base_url, syntaxes=SYNTAXES, uniform=True)
-    except Exception as exc:  # extruct can raise various underlying parser errors
+    except Exception as exc:
         logger.warning("Structured data extraction failed: %s", exc)
         return {
             "checked": False,

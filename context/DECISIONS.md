@@ -129,3 +129,26 @@ image_checks) each currently launch a separate Playwright session against the
 same URL. This will be consolidated into a single shared render pass when the
 orchestrator wires these scripts together, both for runtime efficiency and to
 guarantee all three see the identical rendered snapshot.
+
+
+
+Decision: Move fetch_raw_html()/fetch_rendered_html() from
+skills/crawl-render-audit/scripts/fetchers.py into common/fetch_utils.py.
+Reason: freshness-corroboration's date_signals.py needs the identical
+rendered-HTML fetch logic. What was a crawl-render-audit-specific helper in
+Step 6 turned out to be genuinely cross-skill, so it moved into the shared
+common/ package rather than being duplicated a second time.
+
+Decision: Use simple regex patterns for visible "last updated"/"published on"
+text and copyright-year notices, rather than a full date-parsing library (e.g.
+dateutil) at this stage.
+Reason: Keeps the check dependency-light and generic across unseen websites;
+exact date parsing/normalization can be added later if the orchestrator's
+reasoning stage needs machine-comparable dates rather than raw text evidence.
+
+Decision: Do not compute or report an "is_stale" verdict in date_signals.py -
+only raw signals (dates found, copyright-year gap as a number).
+Reason: Matches the project's explicit rule that absence of a date is evidence
+of lower transparency, not proof of staleness - that judgment requires context
+(page type, industry norms) that belongs in the later reasoning stage, not in
+a deterministic check.

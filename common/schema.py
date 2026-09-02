@@ -1,16 +1,16 @@
 """
 Shared Pydantic models for the Agent Skill Marketplace audit report.
 
-Used by audit-orchestrator (final report assembly) and, later, by the
-specialist skills (crawl-render-audit, freshness-corroboration,
-engagement-audit) to shape the evidence they hand back to the orchestrator.
+Used by audit-orchestrator (final report assembly) and by the specialist
+skills (crawl-render-audit, freshness-corroboration, engagement-audit) to
+shape the evidence they hand back to the orchestrator.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -55,6 +55,23 @@ class Finding(BaseModel):
     impact: Optional[str] = None
     implementation_notes: Optional[str] = None
     verification_method: Optional[str] = None
+
+
+class Observation(BaseModel):
+    """
+    A raw, measured fact produced by a specialist skill BEFORE any judgment
+    is applied. Observations are not automatically problems - they are the
+    evidence the orchestrator/Gemini reasoning layer will later interpret
+    to decide whether a real Finding exists.
+    """
+
+    id: str = Field(..., description="Stable observation identifier, e.g. 'crawl-robots-txt'.")
+    skill: str = Field(..., description="Which skill produced this, e.g. 'crawl-render-audit'.")
+    category: str = Field(..., description="e.g. 'crawlability', 'rendering', 'structured_data'.")
+    description: str = Field(..., description="Plain-language summary of what was measured.")
+    data: Dict[str, Any] = Field(
+        default_factory=dict, description="Raw measured values: counts, URLs, status codes, etc."
+    )
 
 
 class Summary(BaseModel):

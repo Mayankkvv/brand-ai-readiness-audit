@@ -28,3 +28,22 @@ Decision: Use Pydantic's `HttpUrl` type (via a small wrapper model) for URL
 validation instead of hand-rolled regex.
 Reason: More robust against edge cases, and Pydantic is already a required
 dependency for the report schema.
+
+
+Decision: Add a distinct `Observation` model in `common/schema.py`, separate from
+`Finding`.
+Reason: The project's core anti-false-positive principle requires separating raw
+measured facts (observations) from judged problems (findings). Specialist skills
+should only ever emit Observations; only the orchestrator's later reasoning stage
+promotes an Observation into a Finding.
+
+Decision: Parse `robots.txt` "Sitemap:" and "Disallow:" lines manually via simple
+line parsing rather than relying on `urllib.robotparser`.
+Reason: Standard library `robotparser` doesn't reliably expose declared sitemap
+URLs across Python versions, and manual parsing is simple, transparent, and easy
+to unit test.
+
+Decision: Send a descriptive custom User-Agent (`BrandAIReadinessAuditor/0.1`) on
+all outbound requests.
+Reason: Matches the "safe by default" / respectful-crawling requirement - lets
+webmasters identify the audit bot in their logs.

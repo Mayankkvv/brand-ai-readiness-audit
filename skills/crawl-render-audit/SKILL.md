@@ -14,10 +14,29 @@ extractability of a website's content.
 - `url` (string, required): the website to audit.
 
 ## Procedure
-> Status: placeholder — deterministic checks (robots.txt, sitemap, HTTP status,
-> raw vs. rendered HTML via Playwright, structured data via extruct) will be
-> implemented in a later step.
+1. Validate and normalize the URL (`common/url_utils.py`).
+2. Check HTTP accessibility of the homepage: status code and redirect chain
+   (`scripts/access_checks.py::check_http_status`). **[DONE]**
+3. Fetch and parse `robots.txt`: existence, disallowed paths, declared sitemaps
+   (`scripts/access_checks.py::fetch_robots_txt`). **[DONE]**
+4. Discover and parse a sitemap, preferring robots.txt-declared sitemaps and
+   falling back to `/sitemap.xml`; report URL count and sample URLs
+   (`scripts/access_checks.py::discover_sitemap`). **[DONE]**
+5. *(not yet implemented)* Render the page with Playwright and diff raw HTML vs.
+   the rendered DOM to detect JavaScript-dependent content.
+6. *(not yet implemented)* Inspect structured data (JSON-LD via extruct) for
+   presence, validity, and consistency with visible content.
+7. *(not yet implemented)* Detect important facts exposed only via images/visual
+   content with no equivalent readable text.
+8. Return all findings as a list of `Observation` objects (`common/schema.py`) -
+   raw measured facts, not yet judged as problems.
 
 ## Output
-A list of evidence-backed observations about crawlability, rendering, and
-structured data, to be consumed by audit-orchestrator.
+A list of `Observation` objects to be consumed by audit-orchestrator. Each
+observation has `id`, `skill`, `category`, `description`, and a `data` dict with
+the specific measured values (status codes, counts, URLs, etc.).
+
+Run it standalone with:
+```
+python skills/crawl-render-audit/scripts/access_checks.py <url>
+```

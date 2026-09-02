@@ -4,7 +4,7 @@
 2. Create marketplace.json and skills/ folder skeleton  <-- DONE (Step 2)
 3. Build shared schema + working orchestrator CLI  <-- DONE (Step 3)
 3. Create audit-orchestrator skill (SKILL.md + scripts scaffold)
-4. Create crawl-render-audit skill (robots/sitemap/HTTP checks)
+4. crawl-render-audit: HTTP/robots.txt/sitemap checks  <-- DONE (Step 4)
 5. Add Playwright rendering + raw-vs-rendered HTML diff
 6. Add structured data (JSON-LD/extruct) checks
 7. Create freshness-corroboration skill

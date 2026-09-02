@@ -152,3 +152,37 @@ Reason: Matches the project's explicit rule that absence of a date is evidence
 of lower transparency, not proof of staleness - that judgment requires context
 (page type, industry norms) that belongs in the later reasoning stage, not in
 a deterministic check.
+
+
+Decision: Add rendered_page_session() to common/fetch_utils.py, yielding a
+live Playwright Page rather than just an HTML string.
+Reason: Determining what's actually visible "above the fold" requires real
+rendered layout information (getBoundingClientRect()), which only exists
+while the page is live in the browser - a static HTML string can't answer
+that question, since layout depends on CSS/JS execution, not source order.
+
+Decision: Detect calls-to-action via a fixed list of generic English action
+verbs/phrases (e.g. "sign up", "get started", "buy") rather than any
+site-specific button styling or ML classification.
+Reason: Keeps the check fully generalizable to unseen websites per Adobe's
+requirement - a hardcoded selector or learned classifier tuned to known
+sites would be exactly the kind of overfitting the brief warns against.
+Acknowledged limitation: this will miss non-English CTAs and icon-only
+buttons with no text; refining the keyword list based on real testing is
+tracked in NEXT_STEPS/TESTING, not solved definitively in this step.
+
+Decision: Use textstat's Flesch reading-ease score as the content-clarity
+proxy, skipping the calculation entirely when visible text is under 30 words.
+Reason: A well-established, deterministic, library-based readability metric
+avoids inventing a custom heuristic. The word-count floor avoids a
+meaningless score on pages that are mostly navigation/images with little
+prose (the algorithm becomes unreliable on very short text).
+
+Decision: Explicitly defer intent-to-landing alignment and context retention
+rather than approximating them without a real "assumed user intent" input.
+Reason: Both checks are meaningless without knowing what an AI assistant
+told the visitor beforehand. Guessing at a plausible intent from the page's
+own content would be circular (the page could never "misalign" with a guess
+derived from itself) and would produce fake-looking findings with no real
+evidence behind them - directly against the project's evidence-first
+principle.

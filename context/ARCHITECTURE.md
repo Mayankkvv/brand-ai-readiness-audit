@@ -6,46 +6,55 @@ Python package names, so shared code lives outside `skills/`):
 - `common/schema.py` — Pydantic models: Severity, Priority, SuggestedAction,
   Finding, Observation, Summary, AuditReport (with `recompute_summary()`).
 - `common/url_utils.py` — `validate_and_normalize_url(raw_url) -> str`.
-- `common/fetch_utils.py` — shared `fetch_raw_html()` / `fetch_rendered_html()`
-  helpers (httpx + Playwright/Chromium). Originally lived inside
-  crawl-render-audit's scripts/fetchers.py (Step 6); moved to common/ in
-  Step 8 once freshness-corroboration also needed identical fetch logic.
+- `common/fetch_utils.py` — shared fetch helpers:
+  - `fetch_raw_html()` / `fetch_rendered_html()` — simple one-shot fetches.
+  - `rendered_browser_session()` — context manager yielding
+    (rendered_html, browser_context), so callers can fetch additional
+    resources (e.g. images) through the same browser context (needed
+    because some CDNs block bare HTTP clients but serve real browser
+    sessions fine).
+  - `rendered_page_session()` — context manager yielding a live Playwright
+    Page at a fixed viewport, so callers can run `page.evaluate()` to
+    inspect actual rendered layout (e.g. what's visible above the fold).
 
 ## audit-orchestrator (entrypoint)
 `skills/audit-orchestrator/scripts/cli.py`:
-- Adds project root to `sys.path` so it can import `common`.
-- Validates the input URL.
-- Currently builds and prints an empty-findings `AuditReport` as JSON.
-- Not yet implemented: calling the three specialist skills, evidence aggregation,
-  deduplication, Gemini reasoning, final validation.
+- Validates the input URL and currently prints an empty-findings
+  `AuditReport`. Not yet implemented: calling the three specialist skills,
+  evidence aggregation, deduplication, Gemini reasoning, final validation.
 
-## crawl-render-audit (feature-complete)
+## crawl-render-audit (feature-complete, hardened)
 `skills/crawl-render-audit/scripts/`:
-- `access_checks.py::run_access_checks()` — HTTP status/redirects, robots.txt
-  (disallowed paths + declared sitemaps), sitemap discovery/parsing.
-- `render_checks.py::run_render_checks()` — raw HTML vs. rendered DOM visible
-  text: word-count delta, % increase, difflib similarity ratio. Also exposes
-  `extract_visible_text()`, reused by image_checks.py.
-- `structured_data_checks.py::run_structured_data_checks()` — JSON-LD/
-  microdata/OpenGraph via `extruct`, compared raw vs. rendered, flags whether
-  JSON-LD only appears after rendering.
-- `image_checks.py::run_image_text_checks()` — OCRs up to 8 largest
-  content-sized `<img>` tags (filtering icons/logos/tracking pixels), reports
-  word-overlap ratio between each image's text and the page's visible text.
-- All four import shared fetch helpers from `common/fetch_utils.py`.
+- `access_checks.py` — HTTP status/redirects, robots.txt, sitemap.
+- `render_checks.py` — raw vs. rendered visible-text diff (word count,
+  similarity ratio). Exposes `extract_visible_text()`, reused by
+  image_checks.py.
+- `structured_data_checks.py` — JSON-LD/microdata/OpenGraph via `extruct`,
+  raw vs. rendered.
+- `image_checks.py` — OCRs up to 8 content-sized images (filtering icons,
+  SVGs, duplicate URLs), reports word-overlap vs. page text. Downloads via
+  `rendered_browser_session()` to avoid CDN 403s on bare HTTP requests.
 
 ## freshness-corroboration (in progress)
 `skills/freshness-corroboration/scripts/`:
-- `date_signals.py::run_date_signal_checks()` — extracts date/freshness
-  signals: known `<meta>` date tags, JSON-LD `datePublished`/`dateModified`,
-  visible "last updated"/"published on" text patterns (regex), and
-  copyright-year notices; reports gap between latest copyright year and the
-  current year as a raw number (not a verdict).
+- `date_signals.py` — meta date tags, JSON-LD dates, visible "last
+  updated" text patterns, copyright-year gap.
 - TODO: claim consistency across pages, external corroboration, entity
-  ambiguity assessment (likely needs Gemini reasoning, not pure determinism).
+  ambiguity (likely needs Gemini reasoning).
 
-## engagement-audit (not started)
-SKILL.md placeholder only, no scripts yet.
+## engagement-audit (in progress)
+`skills/engagement-audit/scripts/`:
+- `engagement_checks.py::run_engagement_checks()` — returns two
+  Observations:
+  - `engagement-first-screen` — title, meta description, first H1, actual
+    above-fold visible text (via `rendered_page_session()` + JS layout
+    query), and a Flesch reading-ease readability score.
+  - `engagement-trust-navigation` — CTA link/button detection (generic
+    action-verb keyword matching), contact/about link presence, social
+    profile link detection, phone/email pattern detection.
+- TODO: intent-to-landing alignment and context retention - both need an
+  "assumed user intent" input that no caller currently supplies (will come
+  from the orchestrator once it's wired to pass AI-answer context through).
 
 ## Target end-to-end flow
 ```
@@ -63,7 +72,13 @@ Website URL
              -> date/freshness signal detection          [DONE]
              -> claim consistency / corroboration         [TODO]
              -> entity ambiguity                           [TODO]
-        -> engagement-audit                                [TODO]
+        -> engagement-audit
+             -> first-screen orientation                  [DONE]
+             -> CTA / navigation detection                 [DONE]
+             -> trust signal detection                      [DONE]
+             -> readability (content clarity)                [DONE]
+             -> intent-to-landing alignment                    [TODO - needs assumed intent input]
+             -> context retention                              [TODO - needs assumed intent input]
    -> combined evidence                                    [TODO - not wired yet]
    -> Gemini reasoning                                     [TODO]
    -> finding validation / deduplication                   [TODO]

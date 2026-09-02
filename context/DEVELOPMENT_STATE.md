@@ -30,6 +30,11 @@ their own Playwright browser instance independently, so running both against
 the same URL currently renders the page twice - the orchestrator will later
 consolidate this into a single render pass for runtime efficiency.
 
+- (Fixed, Step 9) fetch_utils.py originally waited for Playwright's
+  "networkidle" state, which timed out on real sites with continuous
+  background network activity (e.g. python.org). Switched all three
+  rendering functions to wait for "load" plus a short fixed settle delay.
+
 Last successful test:
 `python skills\crawl-render-audit\scripts\structured_data_checks.py https://example.com`
 returns a single Observation with raw/rendered structured-data summaries.

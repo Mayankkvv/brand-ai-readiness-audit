@@ -12,28 +12,30 @@ full AI discoverability + engagement audit.
 
 ## Inputs
 - `url` (string, required): the website to audit.
+- `GEMINI_API_KEY` (environment variable, required for real findings): see
+  `.env.example`. If unset, the audit still runs and returns raw
+  `observations`, but `findings` will be empty.
 
 ## Procedure
-1. Receive and validate the input URL (`common/url_utils.py`), rejecting empty or
-   malformed input with a clear error. **[DONE]**
+1. Receive and validate the input URL (`common/url_utils.py`). **[DONE]**
 2. Call crawl-render-audit, freshness-corroboration, and engagement-audit,
-   passing the validated URL to each (`scripts/skill_runner.py::run_all_specialist_skills`).
-   **[DONE]**
-3. Collect each skill's raw evidence as `Observation` objects, attached to the
-   report's `observations` field. **[DONE]** A single failing check is caught
-   and recorded as an error Observation rather than crashing the whole audit.
-4. *(not yet implemented)* Normalize, deduplicate, and resolve conflicting
-   findings.
-5. *(not yet implemented)* Send aggregated evidence to Gemini for reasoning
-   about severity, impact, and recommendations, turning Observations into
-   real Findings.
-6. *(not yet implemented)* Validate the final findings against
-   `common/schema.py` and assemble the final `findings`/`summary` fields.
-7. Return the `AuditReport` as JSON. **[DONE]** (currently with populated
-   `observations` but empty `findings`, since step 5 doesn't exist yet).
+   passing the validated URL to each (`scripts/skill_runner.py`). **[DONE]**
+   A single failing check is caught and recorded as an error Observation
+   rather than crashing the whole audit.
+3. Send the aggregated `Observation` list to the configured LLM provider
+   (`scripts/reasoning.py::generate_findings`, backed by `llm/provider.py`).
+   **[DONE]** The LLM interprets evidence already collected deterministically
+   - it never invents facts and never sees raw page content beyond what's
+   summarized in the observations.
+4. Validate each returned finding against `common/schema.py` and assign a
+   stable `id` (F-001, F-002, ...); invalid items are skipped individually
+   rather than failing the whole response. **[DONE]**
+5. *(not yet implemented)* Deduplicate/resolve conflicting findings across
+   multiple runs or overlapping evidence.
+6. Return the final `AuditReport` as JSON. **[DONE]** — `findings` and
+   `summary` are now populated end-to-end.
 
-Run it with:
-python skills/audit-orchestrator/scripts/cli.py <url>
+Run it with: python skills/audit-orchestrator/scripts/cli.py <url>
 
 
 **Known limitation:** each rendering-dependent check (render diff, structured
@@ -44,5 +46,5 @@ in a dedicated runtime-optimization step.
 
 ## Output
 A JSON `AuditReport` (`common/schema.py`): `site`, `audited_at`, `summary`,
-`findings` (currently always empty), and `observations` (the raw evidence
-collected so far).
+`findings` (real, evidence-backed findings from LLM reasoning), and
+`observations` (the raw evidence collected by the specialist skills).

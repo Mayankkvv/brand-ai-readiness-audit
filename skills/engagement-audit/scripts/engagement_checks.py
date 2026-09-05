@@ -14,6 +14,15 @@ pattern-based measurements (Observations, not judgments):
     text, as a generic, library-based proxy for how easy the text is to
     read (not a judgment that a low score is automatically a problem).
 
+Phone number detection uses the `phonenumbers` library (Google's
+libphonenumber, ported to Python) rather than a hand-rolled regex. Testing
+against real sites (python.org) repeatedly produced false positives from a
+loose digit-pattern regex - a floating-point number, a date stamp, and a
+Fibonacci-sequence code example were each misidentified as phone numbers in
+separate test runs. A regex can't reliably distinguish "digits that look
+phone-shaped" from real phone numbers; phonenumbers validates against real
+national numbering-plan structure instead.
+
 The remaining two planned areas - intent-to-landing alignment and context
 retention - require knowing what an AI assistant told the visitor before
 they arrived. No such "assumed intent" input exists yet, so those are
@@ -30,6 +39,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
+import phonenumbers
 import textstat
 from bs4 import BeautifulSoup
 from playwright.sync_api import Error as PlaywrightError
@@ -44,9 +54,6 @@ from common.url_utils import validate_and_normalize_url  # noqa: E402
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger("engagement-audit.engagement_checks")
 
-# Generic, non-brand-specific action verbs commonly used in calls to action.
-# Intentionally broad/pattern-based so this generalizes to unseen websites,
-# not tuned to any specific site's wording.
 CTA_KEYWORDS = [
     "buy", "shop", "get started", "sign up", "signup", "subscribe", "download",
     "book now", "book a", "learn more", "contact us", "contact sales",
@@ -54,18 +61,23 @@ CTA_KEYWORDS = [
     "register", "apply now", "join now", "add to cart", "order now", "schedule",
 ]
 
-PHONE_PATTERN = re.compile(r"(\+?\d[\d\-.\s()]{7,}\d)")
 EMAIL_PATTERN = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
 SOCIAL_DOMAINS = [
     "linkedin.com", "twitter.com", "x.com", "facebook.com",
     "instagram.com", "youtube.com", "tiktok.com",
 ]
 
+# Default region for numbers written without a country code (e.g. "(555)
+# 123-4567"). Numbers with an explicit "+" country code are recognized
+# regardless of this default.
+PHONE_MATCHER_DEFAULT_REGION = "US"
+# Cap how much text we scan for phone numbers - phonenumbers.PhoneNumberMatcher
+# is not free-scan-unlimited-text cheap on very large pages.
+MAX_PHONE_SCAN_CHARS = 20_000
+
 MAX_CTA_SAMPLES = 8
 MAX_ABOVE_FOLD_CHARS_FOR_SAMPLE = 400
 
-# JS run inside the rendered page to find leaf elements whose bounding box
-# overlaps the initial viewport (i.e. visible without scrolling).
 _ABOVE_FOLD_TEXT_JS = """
 () => {
   const vh = window.innerHeight || document.documentElement.clientHeight;
@@ -121,7 +133,6 @@ def _find_cta_elements(soup: BeautifulSoup) -> List[str]:
         lowered = text.lower()
         if any(keyword in lowered for keyword in CTA_KEYWORDS):
             matches.append(text)
-    # Deduplicate while preserving order, then cap the sample size.
     seen: set[str] = set()
     unique_matches: List[str] = []
     for m in matches:
@@ -129,6 +140,23 @@ def _find_cta_elements(soup: BeautifulSoup) -> List[str]:
             seen.add(m)
             unique_matches.append(m)
     return unique_matches[:MAX_CTA_SAMPLES]
+
+
+def _find_phone_numbers(page_text: str) -> List[str]:
+    """
+    Find valid phone numbers in visible text using phonenumbers
+    (libphonenumber), which validates real numbering-plan structure rather
+    than just "digits that look phone-shaped" - avoiding false positives
+    from floats, dates, version numbers, or numeric sequences.
+    """
+    scan_text = page_text[:MAX_PHONE_SCAN_CHARS]
+    matches: List[str] = []
+    try:
+        for match in phonenumbers.PhoneNumberMatcher(scan_text, PHONE_MATCHER_DEFAULT_REGION):
+            matches.append(match.raw_string)
+    except Exception as exc:  # defensive - a parsing edge case must not crash the check
+        logger.warning("Phone number scan failed: %s", exc)
+    return matches
 
 
 def _find_trust_navigation_signals(soup: BeautifulSoup, page_text: str) -> Dict[str, Any]:
@@ -151,7 +179,7 @@ def _find_trust_navigation_signals(soup: BeautifulSoup, page_text: str) -> Dict[
             if domain in href:
                 social_domains_found.add(domain)
 
-    phone_matches = PHONE_PATTERN.findall(page_text)
+    phone_matches = _find_phone_numbers(page_text)
     email_matches = EMAIL_PATTERN.findall(page_text)
 
     return {
@@ -185,7 +213,7 @@ def _compute_readability(page_text: str) -> Dict[str, Any]:
 
 
 def run_engagement_checks(url: str) -> List[Observation]:
-    """Run all Step 9 engagement checks for a URL and return Observations."""
+    """Run all engagement checks for a URL and return Observations."""
     normalized_url = validate_and_normalize_url(url)
 
     try:

@@ -222,3 +222,63 @@ Combining it with a nontrivial rendering-architecture change would violate
 the "one step at a time" / "build one capability at a time" development
 rule. Performance optimization is explicitly listed as a dedicated later
 step in NEXT_STEPS.md.
+
+
+
+Decision: Use the `google-genai` package instead of `google-generativeai` for
+the Gemini integration.
+Reason: Checked current Google documentation while implementing this step -
+`google-generativeai` is now deprecated and no longer supports current
+Gemini models; `google-genai` (`from google import genai`) is the actively
+maintained replacement. This supersedes the original project brief's
+mention of the older package name, which had gone stale.
+
+Decision: Send all aggregated Observations to Gemini in a single call per
+audit, rather than one call per observation or per specialist skill.
+Reason: Directly required by the brief's "keep Gemini API usage efficient"
+rule (free-tier rate limits, 5-minute runtime budget) and its explicit
+guidance to aggregate evidence into "a small number of reasoning calls."
+
+Decision: Have the LLM return findings WITHOUT an `id` field, and assign
+sequential `F-001`-style ids ourselves after validation, rather than trusting
+the model to generate consistent, unique ids.
+Reason: Deterministic id assignment is simpler to reason about, guarantees
+uniqueness, and keeps id formatting consistent across every audit run
+regardless of what the model happens to output.
+
+Decision: Validate each returned finding individually (via a local
+_FindingDraft Pydantic model) and skip invalid items rather than rejecting
+the entire LLM response if one item is malformed.
+Reason: A single malformed finding (e.g. an unexpected severity string)
+should not discard several other genuinely valid, evidence-backed findings
+in the same response - matches the project's "fail gracefully, don't let
+one failure take down more than it needs to" philosophy.
+
+Decision: Request JSON output via `response_mime_type="application/json"` in
+GenerateContentConfig, but still defensively strip markdown code fences and
+catch JSON parse errors in reasoning.py rather than trusting the mime-type
+constraint alone.
+Reason: Belt-and-suspenders - `response_mime_type` is documented and
+generally reliable, but LLM output formatting has enough real-world
+variability that a parsing fallback costs little and prevents a full
+findings-generation failure from a single formatting quirk.
+
+
+
+Decision: Replace the hand-rolled phone-number regex in engagement_checks.py
+with Google's `phonenumbers` library (a Python port of libphonenumber).
+Reason: Real-world testing against python.org produced three distinct false
+positives in successive runs (a floating-point number, a date stamp, a
+Fibonacci-sequence code example) from a regex that could only distinguish
+"digit run with separators," which is fundamentally too weak a signal on
+pages with numeric content. `phonenumbers` validates against real national
+numbering-plan structure, directly solving the root cause instead of adding
+another one-off blacklist rule.
+
+Decision: Add retry-with-backoff for transient LLM errors (503/429-style) in
+llm/gemini.py, rather than treating every LLM failure the same way.
+Reason: Google's own error response explicitly states these spikes are
+"usually temporary." A single unlucky moment of high demand shouldn't
+produce an empty-findings audit report when a short retry would likely
+succeed. Non-transient errors (auth failures, unknown model names) are
+still raised immediately, since retrying those would only waste time.

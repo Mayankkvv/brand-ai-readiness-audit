@@ -30,6 +30,16 @@ their own Playwright browser instance independently, so running both against
 the same URL currently renders the page twice - the orchestrator will later
 consolidate this into a single render pass for runtime efficiency.
 
+- (Fixed) engagement_checks.py's phone-number detection was rebuilt on the
+  `phonenumbers` library (Google's libphonenumber) instead of a hand-rolled
+  regex, after three separate real-world false positives (a float, a date
+  stamp, a Fibonacci-sequence code example) across successive test runs
+  showed the regex approach couldn't reliably be patched.
+- (Fixed) llm/gemini.py now retries transient errors (503/429-style, per
+  Google's own "usually temporary" guidance) with short exponential
+  backoff before giving up, instead of failing the whole reasoning step on
+  the first transient overload.
+
 - (Fixed, Step 9) fetch_utils.py originally waited for Playwright's
   "networkidle" state, which timed out on real sites with continuous
   background network activity (e.g. python.org). Switched all three

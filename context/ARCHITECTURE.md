@@ -31,6 +31,29 @@ Python package names, so shared code lives outside `skills/`):
 - Not yet implemented: deduplication, Gemini reasoning, severity/priority
   assignment, final Finding validation.
 
+## llm/ (modular LLM provider layer)
+`llm/provider.py`:
+- `LLMProvider` — abstract interface with `generate_json(system_instruction, user_prompt) -> str`.
+- `get_provider()` — factory reading `LLM_PROVIDER` env var (default "gemini"),
+  raises `ProviderConfigError` if required config (e.g. API key) is missing,
+  so callers can degrade gracefully.
+- Loads `.env` via `python-dotenv` on import.
+
+`llm/gemini.py`:
+- `GeminiProvider` — implements `LLMProvider` using Google's `google-genai`
+  SDK (the current, actively maintained package - NOT the deprecated
+  `google-generativeai`). Requests JSON output via
+  `GenerateContentConfig(response_mime_type="application/json")`.
+
+`skills/audit-orchestrator/scripts/reasoning.py`:
+- `generate_findings(site, observations) -> List[Finding]` — builds one
+  combined prompt from all aggregated Observations, calls the configured
+  LLM provider once, parses/validates the JSON response into `Finding`
+  objects (via a local `_FindingDraft` Pydantic model), assigns stable
+  `F-001`-style ids, and normalizes severity/priority casing defensively.
+  Any failure (missing API key, LLM error, unparseable response, invalid
+  individual findings) degrades gracefully rather than raising.
+
 ## crawl-render-audit (feature-complete, hardened)
 `skills/crawl-render-audit/scripts/`:
 - `access_checks.py` — HTTP status/redirects, robots.txt, sitemap.
@@ -88,8 +111,8 @@ Website URL
              -> intent-to-landing alignment                    [TODO - needs assumed intent input]
              -> context retention                              [TODO - needs assumed intent input]
    -> combined evidence                                    [DONE - AuditReport.observations]
-   -> Gemini reasoning                                     [TODO]
-   -> finding validation / deduplication                   [TODO]
-   -> severity + priority                                  [TODO]
+   -> Gemini reasoning                                     [DONE - llm/ + reasoning.py]
+   -> finding validation / deduplication                   [DONE per-item; cross-finding dedup TODO]
+   -> severity + priority                                  [DONE - assigned by LLM, validated against schema]
    -> AuditReport (common/schema.py)                       [DONE - findings still always empty]
 ```

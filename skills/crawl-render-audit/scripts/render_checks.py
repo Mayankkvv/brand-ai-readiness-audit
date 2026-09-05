@@ -6,9 +6,11 @@ JavaScript execution. This is a pure measurement (Observation) - deciding
 whether the measured gap represents a real extractability problem happens
 later, in the orchestrator's reasoning layer, not here.
 
-Per the project's design principle: using JavaScript is not itself a
-problem. Only a meaningful, evidence-backed content gap is worth flagging,
-and that judgment is intentionally deferred.
+run_render_checks() accepts optional pre-fetched raw_html/rendered_html
+(Step 12) so audit-orchestrator can share one render pass across all
+rendering-dependent checks instead of this script opening its own separate
+Playwright session. Standalone/CLI usage (no pre-fetched html) is
+unchanged - it still fetches independently exactly as before.
 """
 
 from __future__ import annotations
@@ -78,33 +80,46 @@ def compute_render_diff(raw_html: str, rendered_html: str) -> Dict[str, Any]:
     }
 
 
-def run_render_checks(url: str) -> Observation:
-    """Run the raw-vs-rendered comparison for a URL and return an Observation."""
+def run_render_checks(
+    url: str,
+    *,
+    raw_html: str | None = None,
+    rendered_html: str | None = None,
+) -> Observation:
+    """
+    Run the raw-vs-rendered comparison for a URL and return an Observation.
+
+    If raw_html/rendered_html are provided (e.g. by audit-orchestrator's
+    shared render pass), they are used directly instead of fetching
+    independently.
+    """
     normalized_url = validate_and_normalize_url(url)
 
-    try:
-        raw_html = fetch_raw_html(normalized_url)
-    except httpx.HTTPError as exc:
-        logger.warning("Raw HTML fetch failed for %s: %s", normalized_url, exc)
-        return Observation(
-            id="render-diff",
-            skill="crawl-render-audit",
-            category="rendering",
-            description="Comparison of raw HTML vs. rendered DOM visible text.",
-            data={"checked": False, "error": f"raw fetch failed: {exc}"},
-        )
+    if raw_html is None:
+        try:
+            raw_html = fetch_raw_html(normalized_url)
+        except httpx.HTTPError as exc:
+            logger.warning("Raw HTML fetch failed for %s: %s", normalized_url, exc)
+            return Observation(
+                id="render-diff",
+                skill="crawl-render-audit",
+                category="rendering",
+                description="Comparison of raw HTML vs. rendered DOM visible text.",
+                data={"checked": False, "error": f"raw fetch failed: {exc}"},
+            )
 
-    try:
-        rendered_html = fetch_rendered_html(normalized_url)
-    except PlaywrightError as exc:
-        logger.warning("Rendering failed for %s: %s", normalized_url, exc)
-        return Observation(
-            id="render-diff",
-            skill="crawl-render-audit",
-            category="rendering",
-            description="Comparison of raw HTML vs. rendered DOM visible text.",
-            data={"checked": False, "error": f"render failed: {exc}"},
-        )
+    if rendered_html is None:
+        try:
+            rendered_html = fetch_rendered_html(normalized_url)
+        except PlaywrightError as exc:
+            logger.warning("Rendering failed for %s: %s", normalized_url, exc)
+            return Observation(
+                id="render-diff",
+                skill="crawl-render-audit",
+                category="rendering",
+                description="Comparison of raw HTML vs. rendered DOM visible text.",
+                data={"checked": False, "error": f"render failed: {exc}"},
+            )
 
     diff_data = compute_render_diff(raw_html, rendered_html)
     return Observation(

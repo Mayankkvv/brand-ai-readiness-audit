@@ -38,11 +38,11 @@ full AI discoverability + engagement audit.
 Run it with: python skills/audit-orchestrator/scripts/cli.py <url>
 
 
-**Known limitation:** each rendering-dependent check (render diff, structured
-data, image OCR, engagement checks) currently opens its own independent
-Playwright browser session, so one orchestrator run renders the target page
-multiple times. This will be consolidated into a single shared render pass
-in a dedicated runtime-optimization step.
+**Performance:** as of Step 12, all rendering-dependent checks (render diff,
+structured data, image OCR, date signals, engagement checks) share a single
+Playwright render pass per audited URL (`common/fetch_utils.py::full_render_session`),
+rather than each opening its own browser session. Each check's standalone
+CLI usage still renders independently.
 
 ## Output
 A JSON `AuditReport` (`common/schema.py`): `site`, `audited_at`, `summary`,

@@ -1,53 +1,50 @@
 # DEVELOPMENT STATE
 
 Current step:
-Step 6 — Crawl & Render Audit: Structured Data Checks (COMPLETE)
+Step 12 — Consolidate Playwright Renders Into One Shared Pass (COMPLETE)
 
 Completed:
-- Project root, Git repo, context system (Step 1)
-- marketplace.json + skills/ folder skeleton (Step 2)
-- Shared common/ package: schema.py (AuditReport/Finding/Observation), url_utils.py
-- Working audit-orchestrator CLI producing an empty AuditReport (Step 3)
-- crawl-render-audit: HTTP status/redirects, robots.txt, sitemap checks (Step 4)
-- crawl-render-audit: Playwright render diff (Step 5)
-- crawl-render-audit: structured data checks (JSON-LD/microdata/OpenGraph via
-  extruct), comparing raw vs. rendered HTML (Step 6)
-- Refactored shared fetch logic (fetch_raw_html/fetch_rendered_html) into a new
-  skills/crawl-render-audit/scripts/fetchers.py, used by both render_checks.py
-  and structured_data_checks.py
+- Full pipeline wired end-to-end with real Gemini reasoning (Steps 1-11)
+- Fixed real bugs found via testing: Gemini API key ambiguity, wrong model
+  name, three rounds of phone-number false positives (finally solved by
+  switching to the `phonenumbers` library), Gemini transient-error retry
+- New common/fetch_utils.py::full_render_session() - ONE Playwright render
+  per audited URL, shared across render_checks, structured_data_checks,
+  image_checks, date_signals, and engagement_checks
+- All five of those scripts' run_*() functions now accept optional
+  pre-fetched raw_html/rendered_html/above_fold_text/context kwargs;
+  standalone/CLI usage (no kwargs passed) is unchanged
+- skill_runner.py rewritten to explicitly call each check with the shared
+  render data instead of a generic per-check loop (needed since different
+  checks require different pre-fetched inputs)
 
 Current implementation:
-crawl-render-audit now has three standalone scripts (access_checks.py,
-render_checks.py, structured_data_checks.py), all returning Observations. None
-are wired into audit-orchestrator yet. Hidden non-text fact detection (images
-with important text not in HTML) is still TODO for this skill.
-freshness-corroboration and engagement-audit remain placeholder-only. No Gemini
-integration yet.
+One orchestrator run now performs 1 Playwright render instead of 5. Each
+specialist script remains independently runnable and testable via its own
+CLI exactly as before. Fault isolation preserved: if the shared render
+itself fails, all 5 rendering-dependent checks become error Observations,
+but access_checks (no rendering needed) still succeeds independently.
 
 Known issues:
-None yet. Note: structured_data_checks.py and render_checks.py each launch
-their own Playwright browser instance independently, so running both against
-the same URL currently renders the page twice - the orchestrator will later
-consolidate this into a single render pass for runtime efficiency.
-
-- (Fixed) engagement_checks.py's phone-number detection was rebuilt on the
-  `phonenumbers` library (Google's libphonenumber) instead of a hand-rolled
-  regex, after three separate real-world false positives (a float, a date
-  stamp, a Fibonacci-sequence code example) across successive test runs
-  showed the regex approach couldn't reliably be patched.
-- (Fixed) llm/gemini.py now retries transient errors (503/429-style, per
-  Google's own "usually temporary" guidance) with short exponential
-  backoff before giving up, instead of failing the whole reasoning step on
-  the first transient overload.
-
-- (Fixed, Step 9) fetch_utils.py originally waited for Playwright's
-  "networkidle" state, which timed out on real sites with continuous
-  background network activity (e.g. python.org). Switched all three
-  rendering functions to wait for "load" plus a short fixed settle delay.
+- freshness-corroboration's claim consistency/corroboration/entity-ambiguity
+  checks and engagement-audit's intent-alignment/context-retention checks
+  are still not implemented.
+- No cross-finding deduplication yet (only per-item validation within a
+  single LLM response).
+- access_checks.py's robots.txt parsing can report duplicate
+  disallowed_paths on sites with repeated User-agent blocks (observed on
+  python.org) - cosmetic, not yet fixed.
+- The Gemini reasoning prompt is a first version and will likely need
+  refinement once tested against more real sites.
+- GEMINI_MODEL defaults to "gemini-3.6-flash" - Gemini model availability
+  changes fairly often; if this stops working, check
+  https://ai.google.dev/gemini-api/docs/models and update .env.
+- No pytest suite yet.
 
 Last successful test:
-`python skills\crawl-render-audit\scripts\structured_data_checks.py https://example.com`
-returns a single Observation with raw/rendered structured-data summaries.
+`python skills\audit-orchestrator\scripts\cli.py https://www.python.org`
+completes with a single render pass (no more independent per-check
+Playwright launches) and produces real findings.
 
 Last Git commit:
-"Step 6: structured data checks + shared fetchers module" — pending push.
+"Step 12: consolidate Playwright renders into one shared pass" — pending push.

@@ -282,3 +282,32 @@ Reason: Google's own error response explicitly states these spikes are
 produce an empty-findings audit report when a short retry would likely
 succeed. Non-transient errors (auth failures, unknown model names) are
 still raised immediately, since retrying those would only waste time.
+
+
+
+Decision: Consolidate all 5 rendering-dependent checks onto ONE shared
+Playwright render pass (common/fetch_utils.py::full_render_session), called
+only by audit-orchestrator, rather than each check independently rendering.
+Reason: Real-world testing confirmed 5 separate per-audit renders of the
+same page caused intermittent timeouts (image_checks.py and date_signals.py
+both failed in one run while the identical URL succeeded for other checks
+moments earlier). One render also meaningfully reduces total audit runtime,
+directly supporting the brief's 5-minute runtime requirement.
+
+Decision: Give each specialist check's run_*() function optional
+pre-fetched-data keyword arguments (defaulting to None => fetch
+independently) rather than splitting each script into separate
+"fetch-only" and "compute-only" public functions.
+Reason: Preserves each script's existing standalone CLI behavior exactly
+as-is (a stated project requirement) with a minimal, additive change,
+while still letting the orchestrator skip redundant fetching when it
+already has the data. Avoids a larger, riskier restructuring for the same
+benefit.
+
+Decision: Replace skill_runner.py's generic per-check loop (Step 10) with
+explicit per-check calls naming their specific keyword arguments.
+Reason: Once different checks needed different shared inputs (raw_html vs.
+rendered_html vs. above_fold_text vs. browser context), a single generic
+"call func(url)" loop could no longer express what each check actually
+needs. Explicit calls are more code but far clearer about the real data
+dependencies between the shared render and each check.

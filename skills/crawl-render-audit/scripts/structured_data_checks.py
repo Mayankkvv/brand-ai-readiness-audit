@@ -2,12 +2,11 @@
 Structured data (JSON-LD / microdata / OpenGraph) inspection for the
 crawl-render-audit skill.
 
-Checks whether structured data exists, what schema.org types it declares,
-and whether it is present in the raw HTML or only appears after JavaScript
-rendering. This produces an Observation only - whether missing or
-incomplete structured data is an actual problem depends on page type and
-context (per the project's guidance), so that judgment is deferred to the
-orchestrator's later reasoning stage.
+run_structured_data_checks() accepts optional pre-fetched raw_html/
+rendered_html (Step 12) so audit-orchestrator can share one render pass
+across all rendering-dependent checks instead of this script opening its
+own separate Playwright session. Standalone/CLI usage (no pre-fetched html)
+is unchanged.
 """
 
 from __future__ import annotations
@@ -17,7 +16,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import extruct
 import httpx
@@ -79,30 +78,45 @@ def extract_structured_data(html: str, base_url: str) -> Dict[str, Any]:
     }
 
 
-def run_structured_data_checks(url: str) -> Observation:
-    """Compare structured data present in raw HTML vs. rendered HTML."""
+def run_structured_data_checks(
+    url: str,
+    *,
+    raw_html: Optional[str] = None,
+    rendered_html: Optional[str] = None,
+) -> Observation:
+    """
+    Compare structured data present in raw HTML vs. rendered HTML.
+
+    If raw_html/rendered_html are provided (e.g. by audit-orchestrator's
+    shared render pass), they are used directly instead of fetching
+    independently.
+    """
     normalized_url = validate_and_normalize_url(url)
 
-    try:
-        raw_html = fetch_raw_html(normalized_url)
-    except httpx.HTTPError as exc:
-        logger.warning("Raw HTML fetch failed for %s: %s", normalized_url, exc)
-        return Observation(
-            id="structured-data",
-            skill="crawl-render-audit",
-            category="structured_data",
-            description="Structured data (JSON-LD/microdata/OpenGraph) presence and type.",
-            data={"checked": False, "error": f"raw fetch failed: {exc}"},
-        )
+    if raw_html is None:
+        try:
+            raw_html = fetch_raw_html(normalized_url)
+        except httpx.HTTPError as exc:
+            logger.warning("Raw HTML fetch failed for %s: %s", normalized_url, exc)
+            return Observation(
+                id="structured-data",
+                skill="crawl-render-audit",
+                category="structured_data",
+                description="Structured data (JSON-LD/microdata/OpenGraph) presence and type.",
+                data={"checked": False, "error": f"raw fetch failed: {exc}"},
+            )
 
     raw_result = extract_structured_data(raw_html, normalized_url)
 
     rendered_result = None
-    try:
-        rendered_html = fetch_rendered_html(normalized_url)
+    if rendered_html is not None:
         rendered_result = extract_structured_data(rendered_html, normalized_url)
-    except PlaywrightError as exc:
-        logger.warning("Rendering failed for %s: %s", normalized_url, exc)
+    else:
+        try:
+            fetched_rendered_html = fetch_rendered_html(normalized_url)
+            rendered_result = extract_structured_data(fetched_rendered_html, normalized_url)
+        except PlaywrightError as exc:
+            logger.warning("Rendering failed for %s: %s", normalized_url, exc)
 
     only_after_rendering = None
     if rendered_result is not None:

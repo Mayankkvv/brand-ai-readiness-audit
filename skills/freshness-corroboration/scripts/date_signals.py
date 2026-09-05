@@ -1,13 +1,11 @@
 """
 Freshness signal detection for the freshness-corroboration skill.
 
-Extracts observable signals about how recently a page's content was
-published or updated: meta tags, JSON-LD dates, visible "last updated"
-text patterns, and copyright year notices. This is a pure measurement
-(Observation) - per the project's guidance, absence of a date is evidence
-of lower transparency, not proof that content is stale. Deciding whether
-a date signal indicates an actual freshness problem is deferred to the
-orchestrator's later reasoning stage.
+run_date_signal_checks() accepts an optional pre-rendered rendered_html
+(Step 12) so audit-orchestrator can share one render pass across all
+rendering-dependent checks instead of this script opening its own separate
+Playwright session. Standalone/CLI usage (no pre-fetched html) is
+unchanged.
 """
 
 from __future__ import annotations
@@ -19,7 +17,7 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import extruct
 from bs4 import BeautifulSoup
@@ -45,11 +43,6 @@ DATE_META_NAMES = [
     "dcterms.created",
 ]
 
-# Matches things like "Last updated: January 5, 2026", "Updated on 5 Jan 2026",
-# "Published 2026-01-05", etc. Intentionally broad/simple - a text-pattern
-# signal, not a full NLP date parser. Won't catch every phrasing (e.g. "last
-# edited on") - that's a known limitation to expand later based on real
-# testing (see context/TESTING.md), not a bug in this step.
 UPDATED_TEXT_PATTERN = re.compile(
     r"(last\s+updated|updated\s+on|published\s+on|published)\s*[:\-]?\s*"
     r"([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})",
@@ -117,24 +110,30 @@ def extract_copyright_years(html: str) -> List[int]:
     return sorted(years)
 
 
-def run_date_signal_checks(url: str) -> Observation:
-    """Collect freshness/date signals for a URL."""
+def run_date_signal_checks(url: str, *, rendered_html: Optional[str] = None) -> Observation:
+    """
+    Collect freshness/date signals for a URL.
+
+    If rendered_html is provided (e.g. by audit-orchestrator's shared
+    render pass), it's used directly instead of fetching independently.
+    """
     normalized_url = validate_and_normalize_url(url)
 
-    try:
-        rendered_html = fetch_rendered_html(normalized_url)
-    except PlaywrightError as exc:
-        logger.warning("Rendering failed for %s: %s", normalized_url, exc)
-        return Observation(
-            id="freshness-date-signals",
-            skill="freshness-corroboration",
-            category="freshness",
-            description=(
-                "Detected date/freshness signals: meta tags, JSON-LD dates, "
-                "visible text, copyright years."
-            ),
-            data={"checked": False, "error": f"render failed: {exc}"},
-        )
+    if rendered_html is None:
+        try:
+            rendered_html = fetch_rendered_html(normalized_url)
+        except PlaywrightError as exc:
+            logger.warning("Rendering failed for %s: %s", normalized_url, exc)
+            return Observation(
+                id="freshness-date-signals",
+                skill="freshness-corroboration",
+                category="freshness",
+                description=(
+                    "Detected date/freshness signals: meta tags, JSON-LD dates, "
+                    "visible text, copyright years."
+                ),
+                data={"checked": False, "error": f"render failed: {exc}"},
+            )
 
     meta_dates = extract_meta_dates(rendered_html)
     json_ld_dates = extract_json_ld_dates(rendered_html, normalized_url)

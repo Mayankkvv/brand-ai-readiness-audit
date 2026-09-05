@@ -2,31 +2,16 @@
 First-screen orientation and trust/navigation checks for the
 engagement-audit skill.
 
-Covers four of the skill's five planned areas, all as deterministic,
-pattern-based measurements (Observations, not judgments):
-  - First-screen orientation: title, meta description, first heading, and
-    the actual visible text above the fold (via a live rendered viewport).
-  - Navigation / next-step clarity: presence and count of call-to-action
-    links/buttons using generic action-verb patterns.
-  - Trust / credibility signals: contact/about links, social profile
-    links, and visible phone/email patterns.
-  - Content clarity: a Flesch reading-ease score over the page's visible
-    text, as a generic, library-based proxy for how easy the text is to
-    read (not a judgment that a low score is automatically a problem).
+run_engagement_checks() accepts optional pre-rendered rendered_html/
+above_fold_text (Step 12) so audit-orchestrator can share one render pass
+across all rendering-dependent checks instead of this script opening its
+own separate Playwright session. Standalone/CLI usage (no pre-fetched
+render) is unchanged.
 
 Phone number detection uses the `phonenumbers` library (Google's
-libphonenumber, ported to Python) rather than a hand-rolled regex. Testing
-against real sites (python.org) repeatedly produced false positives from a
-loose digit-pattern regex - a floating-point number, a date stamp, and a
-Fibonacci-sequence code example were each misidentified as phone numbers in
-separate test runs. A regex can't reliably distinguish "digits that look
-phone-shaped" from real phone numbers; phonenumbers validates against real
-national numbering-plan structure instead.
-
-The remaining two planned areas - intent-to-landing alignment and context
-retention - require knowing what an AI assistant told the visitor before
-they arrived. No such "assumed intent" input exists yet, so those are
-deferred until the orchestrator can supply that context (see SKILL.md).
+libphonenumber) rather than a hand-rolled regex, after real-world testing
+against python.org produced false positives (a float, a date stamp, a
+Fibonacci-sequence code example) from a loose digit-pattern regex.
 """
 
 from __future__ import annotations
@@ -37,7 +22,7 @@ import logging
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import phonenumbers
 import textstat
@@ -47,7 +32,7 @@ from playwright.sync_api import Error as PlaywrightError
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from common.fetch_utils import rendered_page_session  # noqa: E402
+from common.fetch_utils import ABOVE_FOLD_TEXT_JS, rendered_page_session  # noqa: E402
 from common.schema import Observation  # noqa: E402
 from common.url_utils import validate_and_normalize_url  # noqa: E402
 
@@ -67,40 +52,11 @@ SOCIAL_DOMAINS = [
     "instagram.com", "youtube.com", "tiktok.com",
 ]
 
-# Default region for numbers written without a country code (e.g. "(555)
-# 123-4567"). Numbers with an explicit "+" country code are recognized
-# regardless of this default.
 PHONE_MATCHER_DEFAULT_REGION = "US"
-# Cap how much text we scan for phone numbers - phonenumbers.PhoneNumberMatcher
-# is not free-scan-unlimited-text cheap on very large pages.
 MAX_PHONE_SCAN_CHARS = 20_000
 
 MAX_CTA_SAMPLES = 8
 MAX_ABOVE_FOLD_CHARS_FOR_SAMPLE = 400
-
-_ABOVE_FOLD_TEXT_JS = """
-() => {
-  const vh = window.innerHeight || document.documentElement.clientHeight;
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT, null);
-  let text = '';
-  const seen = new Set();
-  let node = walker.nextNode();
-  while (node) {
-    if (node.children.length === 0) {
-      const rect = node.getBoundingClientRect();
-      if (rect.top < vh && rect.bottom > 0 && rect.width > 0 && rect.height > 0) {
-        const t = (node.innerText || '').trim();
-        if (t && !seen.has(t)) {
-          seen.add(t);
-          text += ' ' + t;
-        }
-      }
-    }
-    node = walker.nextNode();
-  }
-  return text.trim();
-}
-"""
 
 
 def _extract_page_metadata(soup: BeautifulSoup) -> Dict[str, Any]:
@@ -143,18 +99,13 @@ def _find_cta_elements(soup: BeautifulSoup) -> List[str]:
 
 
 def _find_phone_numbers(page_text: str) -> List[str]:
-    """
-    Find valid phone numbers in visible text using phonenumbers
-    (libphonenumber), which validates real numbering-plan structure rather
-    than just "digits that look phone-shaped" - avoiding false positives
-    from floats, dates, version numbers, or numeric sequences.
-    """
+    """Find valid phone numbers using phonenumbers (libphonenumber)."""
     scan_text = page_text[:MAX_PHONE_SCAN_CHARS]
     matches: List[str] = []
     try:
         for match in phonenumbers.PhoneNumberMatcher(scan_text, PHONE_MATCHER_DEFAULT_REGION):
             matches.append(match.raw_string)
-    except Exception as exc:  # defensive - a parsing edge case must not crash the check
+    except Exception as exc:
         logger.warning("Phone number scan failed: %s", exc)
     return matches
 
@@ -212,35 +163,47 @@ def _compute_readability(page_text: str) -> Dict[str, Any]:
     }
 
 
-def run_engagement_checks(url: str) -> List[Observation]:
-    """Run all engagement checks for a URL and return Observations."""
+def run_engagement_checks(
+    url: str,
+    *,
+    rendered_html: Optional[str] = None,
+    above_fold_text: Optional[str] = None,
+) -> List[Observation]:
+    """
+    Run all engagement checks for a URL and return Observations.
+
+    If rendered_html/above_fold_text are provided (e.g. by
+    audit-orchestrator's shared render pass), they are used directly
+    instead of opening a separate Playwright session.
+    """
     normalized_url = validate_and_normalize_url(url)
 
-    try:
-        with rendered_page_session(normalized_url) as page:
-            html = page.content()
-            above_fold_text = page.evaluate(_ABOVE_FOLD_TEXT_JS)
-    except PlaywrightError as exc:
-        logger.warning("Rendering failed for %s: %s", normalized_url, exc)
-        error_data = {"checked": False, "error": f"render failed: {exc}"}
-        return [
-            Observation(
-                id="engagement-first-screen",
-                skill="engagement-audit",
-                category="engagement",
-                description="First-screen orientation: title, meta description, H1, above-fold text.",
-                data=error_data,
-            ),
-            Observation(
-                id="engagement-trust-navigation",
-                skill="engagement-audit",
-                category="engagement",
-                description="Call-to-action, trust, and navigation signal detection.",
-                data=error_data,
-            ),
-        ]
+    if rendered_html is None or above_fold_text is None:
+        try:
+            with rendered_page_session(normalized_url) as page:
+                rendered_html = page.content()
+                above_fold_text = page.evaluate(ABOVE_FOLD_TEXT_JS)
+        except PlaywrightError as exc:
+            logger.warning("Rendering failed for %s: %s", normalized_url, exc)
+            error_data = {"checked": False, "error": f"render failed: {exc}"}
+            return [
+                Observation(
+                    id="engagement-first-screen",
+                    skill="engagement-audit",
+                    category="engagement",
+                    description="First-screen orientation: title, meta description, H1, above-fold text.",
+                    data=error_data,
+                ),
+                Observation(
+                    id="engagement-trust-navigation",
+                    skill="engagement-audit",
+                    category="engagement",
+                    description="Call-to-action, trust, and navigation signal detection.",
+                    data=error_data,
+                ),
+            ]
 
-    soup = BeautifulSoup(html, "html.parser")
+    soup = BeautifulSoup(rendered_html, "html.parser")
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
     full_page_text = re.sub(r"\s+", " ", soup.get_text(separator=" ")).strip()

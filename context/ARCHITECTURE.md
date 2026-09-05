@@ -19,25 +19,24 @@ Python package names, so shared code lives outside `skills/`):
 
 ## audit-orchestrator (entrypoint)
 `skills/audit-orchestrator/scripts/`:
-- `skill_runner.py::run_all_specialist_skills()` — dynamically loads each
-  specialist skill's script module by file path (via `importlib.util`,
-  since skill folder names contain hyphens and aren't valid Python package
-  names), calls its check function(s), and aggregates every returned
-  `Observation` into one list. Each check is individually wrapped so a
-  failure becomes an error Observation instead of crashing the run.
-- `cli.py::run_audit()` — validates the URL, calls `run_all_specialist_skills()`,
-  and assembles an `AuditReport` with the collected `observations` (findings
-  still empty - no Gemini reasoning layer yet).
-- Not yet implemented: deduplication, Gemini reasoning, severity/priority
-  assignment, final Finding validation.
+- `skill_runner.py::run_all_specialist_skills()` — runs access_checks
+  independently (no rendering needed), then opens ONE shared
+  `common.fetch_utils.full_render_session()` and passes its raw_html/
+  rendered_html/above_fold_text/context to render_checks,
+  structured_data_checks, image_checks, date_signals, and
+  engagement_checks - each still individually fault-isolated. If the
+  shared render itself fails, all 5 become error Observations.
+- `reasoning.py::generate_findings()` — sends aggregated Observations to
+  the LLM, validates/normalizes the response into Findings.
+- `cli.py::run_audit()` — validates the URL, runs skill_runner, runs
+  reasoning, assembles the final AuditReport.
 
 ## llm/ (modular LLM provider layer)
-`llm/provider.py`:
-- `LLMProvider` — abstract interface with `generate_json(system_instruction, user_prompt) -> str`.
-- `get_provider()` — factory reading `LLM_PROVIDER` env var (default "gemini"),
-  raises `ProviderConfigError` if required config (e.g. API key) is missing,
-  so callers can degrade gracefully.
-- Loads `.env` via `python-dotenv` on import.
+`llm/provider.py` — `LLMProvider` abstract interface + `get_provider()` factory.
+`llm/gemini.py` — `GeminiProvider`, using `google-genai`. Forces
+`GOOGLE_API_KEY` to match the configured key (fixes an SDK ambient-env-var
+conflict found via testing) and retries transient errors (503/429-style)
+with backoff before giving up.
 
 `llm/gemini.py`:
 - `GeminiProvider` — implements `LLMProvider` using Google's `google-genai`
@@ -54,65 +53,50 @@ Python package names, so shared code lives outside `skills/`):
   Any failure (missing API key, LLM error, unparseable response, invalid
   individual findings) degrades gracefully rather than raising.
 
-## crawl-render-audit (feature-complete, hardened)
+## crawl-render-audit (feature-complete, shares one render with other skills)
 `skills/crawl-render-audit/scripts/`:
-- `access_checks.py` — HTTP status/redirects, robots.txt, sitemap.
-- `render_checks.py` — raw vs. rendered visible-text diff (word count,
-  similarity ratio). Exposes `extract_visible_text()`, reused by
-  image_checks.py.
-- `structured_data_checks.py` — JSON-LD/microdata/OpenGraph via `extruct`,
-  raw vs. rendered.
-- `image_checks.py` — OCRs up to 8 content-sized images (filtering icons,
-  SVGs, duplicate URLs), reports word-overlap vs. page text. Downloads via
-  `rendered_browser_session()` to avoid CDN 403s on bare HTTP requests.
+- `access_checks.py` — HTTP status/redirects, robots.txt, sitemap (no rendering).
+- `render_checks.py` — raw vs. rendered visible-text diff. Accepts optional
+  pre-fetched raw_html/rendered_html.
+- `structured_data_checks.py` — JSON-LD/microdata/OpenGraph via `extruct`.
+  Accepts optional pre-fetched raw_html/rendered_html.
+- `image_checks.py` — OCRs content images via Tesseract. Accepts optional
+  pre-rendered rendered_html/context.
 
 ## freshness-corroboration (in progress)
-`skills/freshness-corroboration/scripts/`:
-- `date_signals.py` — meta date tags, JSON-LD dates, visible "last
-  updated" text patterns, copyright-year gap.
-- TODO: claim consistency across pages, external corroboration, entity
-  ambiguity (likely needs Gemini reasoning).
+`skills/freshness-corroboration/scripts/date_signals.py` — date/freshness
+signals. Accepts optional pre-rendered rendered_html.
+TODO: claim consistency, external corroboration, entity ambiguity.
 
 ## engagement-audit (in progress)
-`skills/engagement-audit/scripts/`:
-- `engagement_checks.py::run_engagement_checks()` — returns two
-  Observations:
-  - `engagement-first-screen` — title, meta description, first H1, actual
-    above-fold visible text (via `rendered_page_session()` + JS layout
-    query), and a Flesch reading-ease readability score.
-  - `engagement-trust-navigation` — CTA link/button detection (generic
-    action-verb keyword matching), contact/about link presence, social
-    profile link detection, phone/email pattern detection.
-- TODO: intent-to-landing alignment and context retention - both need an
-  "assumed user intent" input that no caller currently supplies (will come
-  from the orchestrator once it's wired to pass AI-answer context through).
+`skills/engagement-audit/scripts/engagement_checks.py` — first-screen
+orientation, CTA/trust/navigation signals (phone detection via
+`phonenumbers`), readability. Accepts optional pre-rendered
+rendered_html/above_fold_text.
+TODO: intent-to-landing alignment, context retention.
+
+## Shared render architecture (Step 12)
+`common/fetch_utils.py::full_render_session()` performs ONE Playwright
+render per audited URL and yields a `RenderResult` (raw_html, rendered_html,
+above_fold_text, live browser context). audit-orchestrator uses this to run
+all 5 rendering-dependent checks against a single render. Each script's
+standalone CLI still uses its own independent render
+(`fetch_rendered_html()`/`rendered_browser_session()`/`rendered_page_session()`),
+unchanged.
 
 ## Target end-to-end flow
 ```
 Website URL
    -> audit-orchestrator/scripts/cli.py
-        -> validate_and_normalize_url()               [DONE]
-        -> crawl-render-audit
-             -> HTTP status / redirects                [DONE]
-             -> robots.txt                              [DONE]
-             -> sitemap discovery/parsing                [DONE]
-             -> Playwright render diff                   [DONE]
-             -> structured data (extruct)                [DONE]
-             -> hidden image-text detection (OCR)         [DONE]
-        -> freshness-corroboration
-             -> date/freshness signal detection          [DONE]
-             -> claim consistency / corroboration         [TODO]
-             -> entity ambiguity                           [TODO]
-        -> engagement-audit
-             -> first-screen orientation                  [DONE]
-             -> CTA / navigation detection                 [DONE]
-             -> trust signal detection                      [DONE]
-             -> readability (content clarity)                [DONE]
-             -> intent-to-landing alignment                    [TODO - needs assumed intent input]
-             -> context retention                              [TODO - needs assumed intent input]
-   -> combined evidence                                    [DONE - AuditReport.observations]
-   -> Gemini reasoning                                     [DONE - llm/ + reasoning.py]
-   -> finding validation / deduplication                   [DONE per-item; cross-finding dedup TODO]
-   -> severity + priority                                  [DONE - assigned by LLM, validated against schema]
-   -> AuditReport (common/schema.py)                       [DONE - findings still always empty]
+        -> validate_and_normalize_url()                    [DONE]
+        -> skill_runner.run_all_specialist_skills()
+             -> access_checks (independent)                 [DONE]
+             -> ONE shared full_render_session()             [DONE - Step 12]
+                  -> render_checks                            [DONE]
+                  -> structured_data_checks                    [DONE]
+                  -> image_checks                               [DONE]
+                  -> date_signals                                [DONE]
+                  -> engagement_checks                            [DONE]
+        -> reasoning.generate_findings() (Gemini)               [DONE]
+   -> AuditReport (findings + summary + observations)            [DONE]
 ```

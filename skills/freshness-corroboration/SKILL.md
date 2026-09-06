@@ -1,53 +1,46 @@
 ---
-name: engagement-audit
-description: Assesses first-screen orientation, intent-to-landing-page alignment, context retention, navigation clarity, and trust signals for a visitor arriving on a target website.
+name: freshness-corroboration
+description: Identifies stale or conflicting important facts, checks corroboration against independent sources, and assesses entity clarity/ambiguity on a target website.
 license: MIT
 ---
 
-# Engagement Audit
+# Freshness & Corroboration
 
 ## When to use
-Called by audit-orchestrator to assess the on-site visitor experience after arrival.
+Called by audit-orchestrator to assess factual freshness, consistency, and entity
+clarity of a website.
 
 ## Inputs
 - `url` (string, required): the website to audit.
-- `assumed_user_intent` (string, optional — not yet supported): what an AI
-  assistant told the visitor before they arrived, e.g. "Company X provides
-  AI customer-support software." Needed for intent-alignment and
-  context-retention checks; those checks are not yet implemented because no
-  caller currently supplies this input (see Procedure, steps 3-4).
 
 ## Procedure
 1. Validate and normalize the URL (`common/url_utils.py`).
-2. Render the page at a fixed viewport and extract: page `<title>`, meta
-   description, first `<h1>`, and the actual visible text above the fold
-   (via live DOM layout, not just raw HTML order)
-   (`scripts/engagement_checks.py::run_engagement_checks`). **[DONE]**
-3. *(not yet implemented)* Compare the above-fold content against an assumed
-   AI-answer intent to assess intent-to-landing-page alignment. Requires the
-   `assumed_user_intent` input, which no caller currently provides.
-4. *(not yet implemented)* Assess context retention (does the page reinforce
-   "yes, this is what I was looking for" for a visitor arriving with prior
-   context). Same dependency as step 3.
-5. Detect call-to-action links/buttons using generic action-verb patterns
-   (`scripts/engagement_checks.py::_find_cta_elements`). **[DONE]**
-6. Detect trust/navigation signals: contact/about links, social profile
-   links, visible phone/email patterns
-   (`scripts/engagement_checks.py::_find_trust_navigation_signals`). **[DONE]**
-7. Compute a Flesch reading-ease score over the page's visible text as a
-   generic proxy for content clarity
-   (`scripts/engagement_checks.py::_compute_readability`). **[DONE]** A low
-   score is a measurement, not automatically a problem — appropriate
-   reading level varies by audience and page type, which is judged later.
-8. Return all findings as a list of `Observation` objects (`common/schema.py`).
+2. Detect date/freshness signals: `<meta>` tags, JSON-LD `datePublished`/
+   `dateModified`, visible "last updated" text, copyright-year notices
+   (`scripts/date_signals.py::run_date_signal_checks`). **[DONE]**
+3. Collect entity identity signals: JSON-LD Organization/LocalBusiness data
+   (name, url, logo, `sameAs` links), the site's own name self-descriptions
+   (title, `og:site_name`, footer copyright name), its domain, and any
+   address-shaped text (`scripts/entity_signals.py::run_entity_signal_checks`).
+   **[DONE]** This is raw evidence only — whether the collected names/domain
+   are actually consistent or ambiguous is judged later by audit-orchestrator's
+   Gemini reasoning stage, which receives this alongside every other skill's
+   evidence in the same single reasoning call (no separate LLM call needed
+   for this skill).
+4. *(explicitly out of scope for now)* Checking claims against independent
+   external sources (live web search for corroboration/contradiction) is
+   not implemented — it would require additional LLM/search calls per
+   audit, working against the 5-minute runtime and free-tier rate-limit
+   constraints. This is a documented scope decision, not a gap to silently
+   fill later without discussion (see context/DECISIONS.md).
+5. Return all findings as a list of `Observation` objects (`common/schema.py`).
 
 ## Output
-A list of `Observation` objects to be consumed by audit-orchestrator:
-`engagement-first-screen` (title/meta/H1/above-fold text/readability) and
-`engagement-trust-navigation` (CTAs, contact/about/social links, phone/email
-patterns).
+A list of `Observation` objects consumed by audit-orchestrator:
+`freshness-date-signals` and `entity-identity-signals`.
 
 Run the checks standalone with:
 ```
-python skills/engagement-audit/scripts/engagement_checks.py <url>
+python skills/freshness-corroboration/scripts/date_signals.py <url>
+python skills/freshness-corroboration/scripts/entity_signals.py <url>
 ```

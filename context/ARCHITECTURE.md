@@ -63,10 +63,19 @@ with backoff before giving up.
 - `image_checks.py` — OCRs content images via Tesseract. Accepts optional
   pre-rendered rendered_html/context.
 
-## freshness-corroboration (in progress)
-`skills/freshness-corroboration/scripts/date_signals.py` — date/freshness
-signals. Accepts optional pre-rendered rendered_html.
-TODO: claim consistency, external corroboration, entity ambiguity.
+## freshness-corroboration (scope-complete, aside from external corroboration)
+`skills/freshness-corroboration/scripts/`:
+- `date_signals.py` — date/freshness signals. Accepts optional pre-rendered
+  rendered_html.
+- `entity_signals.py::run_entity_signal_checks()` — JSON-LD Organization/
+  LocalBusiness data (name/url/logo/sameAs), site name self-descriptions
+  (title, og:site_name, footer copyright name), domain, address-shaped
+  text. Accepts optional pre-rendered rendered_html. Feeds raw evidence
+  into audit-orchestrator's existing single Gemini reasoning call - claim
+  consistency and entity ambiguity are judged there, not via a second LLM
+  call in this skill.
+- External corroboration against independent web sources: deliberately
+  out of scope (see context/DECISIONS.md) - not a TODO.
 
 ## engagement-audit (in progress)
 `skills/engagement-audit/scripts/engagement_checks.py` — first-screen

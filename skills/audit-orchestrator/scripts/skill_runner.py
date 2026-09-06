@@ -100,6 +100,7 @@ def run_all_specialist_skills(url: str) -> List[Observation]:
         structured_data_checks = _load_module("structured_data_checks", crawl_scripts)
         image_checks = _load_module("image_checks", crawl_scripts)
         date_signals = _load_module("date_signals", freshness_scripts)
+        entity_signals = _load_module("entity_signals", freshness_scripts)
         engagement_checks = _load_module("engagement_checks", engagement_scripts)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to load one or more rendering-dependent check modules: %s", exc)
@@ -143,6 +144,20 @@ def run_all_specialist_skills(url: str) -> List[Observation]:
                     _error_observation(
                         "structured-data-checks-error", "crawl-render-audit",
                         "structured_data_checks could not be completed.", str(exc),
+                    )
+                )
+
+                try:
+                    observations.append(
+                    entity_signals.run_entity_signal_checks(url, rendered_html=render.rendered_html)
+                )
+                    logger.info("freshness-corroboration.entity_signals completed")
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("freshness-corroboration.entity_signals failed: %s", exc)
+                    observations.append(
+                    _error_observation(
+                        "entity-signals-error", "freshness-corroboration",
+                        "entity_signals could not be completed.", str(exc),
                     )
                 )
 
@@ -214,6 +229,10 @@ def run_all_specialist_skills(url: str) -> List[Observation]:
                 _error_observation(
                     "date-signals-error", "freshness-corroboration",
                     "date_signals could not be completed.", error,
+                ),
+                                _error_observation(
+                    "entity-signals-error", "freshness-corroboration",
+                    "entity_signals could not be completed.", error,
                 ),
                 _error_observation(
                     "engagement-checks-error", "engagement-audit",

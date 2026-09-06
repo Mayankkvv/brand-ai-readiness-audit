@@ -311,3 +311,34 @@ rendered_html vs. above_fold_text vs. browser context), a single generic
 "call func(url)" loop could no longer express what each check actually
 needs. Explicit calls are more code but far clearer about the real data
 dependencies between the shared render and each check.
+
+
+
+Decision: Implement claim-consistency and entity-ambiguity checks as
+additional deterministic evidence collection (entity_signals.py) feeding
+into audit-orchestrator's EXISTING single Gemini reasoning call, rather
+than adding a second, dedicated LLM call within freshness-corroboration.
+Reason: The project's "keep Gemini usage efficient" rule already caps
+reasoning at a small number of calls per audit. Gemini already receives
+every Observation in one combined call, so it's well-positioned to spot
+identity inconsistencies (e.g. mismatched name variants and domain)
+directly from richer evidence, without a second round-trip.
+
+Decision: Do NOT implement external corroboration against independent
+third-party sources (e.g. live web search to confirm or contradict a
+site's claims) as part of this project.
+Reason: Real corroboration would require additional LLM and/or search API
+calls per audited claim, directly conflicting with the 5-minute runtime
+requirement and Gemini free-tier rate limits. This is a deliberate scope
+boundary appropriate for the hackathon deliverable, documented here so it
+reads as an intentional decision rather than an overlooked requirement if
+revisited later.
+
+Decision: Use a conservative, suffix-anchored regex for address-pattern
+detection (number + short word run + recognized street-type suffix) rather
+than a looser "digits near words" pattern.
+Reason: Direct lesson from engagement_checks.py's three rounds of
+phone-number false positives (Steps 11) - a loosely specified numeric/text
+pattern reliably produces false positives on general web content. Anchoring
+on a recognizable street-type suffix trades some recall for much higher
+precision, appropriate for a low-stakes supplementary evidence field.

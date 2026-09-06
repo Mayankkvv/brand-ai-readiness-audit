@@ -4,14 +4,12 @@
 10. Wire audit-orchestrator to call all specialist skills and aggregate
     Observations  <-- DONE (Step 10)
 11. Integrate Gemini reasoning layer (modular llm/ package)  <-- DONE (Step 11)
-    Includes fixes found via real testing: correct google-genai package,
-    current model name, API key ambiguity fix, retry-on-transient-error,
-    and a phone-number detection rebuild (phonenumbers library) after
-    three rounds of regex false positives.
-12. Consolidate the multiple independent Playwright render passes into one
-    shared render per audited page  <-- DONE (Step 12)
-13. freshness-corroboration: claim consistency, external corroboration,
-    entity ambiguity (can lean on the now-working LLM layer)
+12. Consolidate Playwright renders into one shared pass  <-- DONE (Step 12)
+13. freshness-corroboration: entity identity signals (claim consistency +
+    entity ambiguity, via richer evidence into the existing Gemini call)
+    <-- DONE (Step 13). External corroboration against independent
+    sources remains an intentional, documented scope boundary - not a
+    pending item.
 14. engagement-audit: intent-to-landing alignment + context retention
     (needs an "assumed user intent" input; can reuse the LLM layer)
 15. Cross-finding deduplication (beyond per-item validation already in

@@ -102,6 +102,7 @@ def run_all_specialist_skills(url: str) -> List[Observation]:
         date_signals = _load_module("date_signals", freshness_scripts)
         entity_signals = _load_module("entity_signals", freshness_scripts)
         engagement_checks = _load_module("engagement_checks", engagement_scripts)
+        intent_alignment = _load_module("intent_alignment", engagement_scripts)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to load one or more rendering-dependent check modules: %s", exc)
         observations.append(
@@ -147,14 +148,14 @@ def run_all_specialist_skills(url: str) -> List[Observation]:
                     )
                 )
 
-                try:
-                    observations.append(
+            try:
+                observations.append(
                     entity_signals.run_entity_signal_checks(url, rendered_html=render.rendered_html)
                 )
-                    logger.info("freshness-corroboration.entity_signals completed")
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("freshness-corroboration.entity_signals failed: %s", exc)
-                    observations.append(
+                logger.info("freshness-corroboration.entity_signals completed")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("freshness-corroboration.entity_signals failed: %s", exc)
+                observations.append(
                     _error_observation(
                         "entity-signals-error", "freshness-corroboration",
                         "entity_signals could not be completed.", str(exc),
@@ -209,6 +210,24 @@ def run_all_specialist_skills(url: str) -> List[Observation]:
                     )
                 )
 
+            try:
+                observations.append(
+                    intent_alignment.run_intent_alignment_check(
+                        url,
+                        rendered_html=render.rendered_html,
+                        above_fold_text=render.above_fold_text,
+                    )
+                )
+                logger.info("engagement-audit.intent_alignment completed")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("engagement-audit.intent_alignment failed: %s", exc)
+                observations.append(
+                    _error_observation(
+                        "intent-alignment-error", "engagement-audit",
+                        "intent_alignment could not be completed.", str(exc),
+                    )
+                )
+
     except Exception as exc:  # noqa: BLE001 - the shared render itself failed
         logger.warning("Shared render session failed for %s: %s", url, exc)
         error = f"shared render failed: {exc}"
@@ -237,6 +256,10 @@ def run_all_specialist_skills(url: str) -> List[Observation]:
                 _error_observation(
                     "engagement-checks-error", "engagement-audit",
                     "engagement_checks could not be completed.", error,
+                ),
+                _error_observation(
+                    "intent-alignment-error", "engagement-audit",
+                    "intent_alignment could not be completed.", error,
                 ),
             ]
         )

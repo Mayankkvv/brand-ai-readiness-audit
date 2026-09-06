@@ -77,12 +77,18 @@ with backoff before giving up.
 - External corroboration against independent web sources: deliberately
   out of scope (see context/DECISIONS.md) - not a TODO.
 
-## engagement-audit (in progress)
-`skills/engagement-audit/scripts/engagement_checks.py` — first-screen
-orientation, CTA/trust/navigation signals (phone detection via
-`phonenumbers`), readability. Accepts optional pre-rendered
-rendered_html/above_fold_text.
-TODO: intent-to-landing alignment, context retention.
+## engagement-audit (scope-complete)
+`skills/engagement-audit/scripts/`:
+- `engagement_checks.py` — first-screen orientation, CTA/trust/navigation
+  signals (phone detection via `phonenumbers`), readability. Accepts
+  optional pre-rendered rendered_html/above_fold_text.
+- `intent_alignment.py::run_intent_alignment_check()` — queries the LLM
+  (via `llm/provider.py`) for what it independently knows about the site's
+  bare domain name (no page content supplied, avoiding circularity per
+  Step 9's decision), then measures word overlap between that answer and
+  the page's actual above-fold text. Treats "intent-to-landing alignment"
+  and "context retention" as one measurement (documented consolidation).
+  Accepts optional pre-rendered rendered_html/above_fold_text.
 
 ## Shared render architecture (Step 12)
 `common/fetch_utils.py::full_render_session()` performs ONE Playwright
@@ -98,14 +104,16 @@ unchanged.
 Website URL
    -> audit-orchestrator/scripts/cli.py
         -> validate_and_normalize_url()                    [DONE]
-        -> skill_runner.run_all_specialist_skills()
+                -> skill_runner.run_all_specialist_skills()
              -> access_checks (independent)                 [DONE]
-             -> ONE shared full_render_session()             [DONE - Step 12]
+             -> ONE shared full_render_session()             [DONE]
                   -> render_checks                            [DONE]
                   -> structured_data_checks                    [DONE]
                   -> image_checks                               [DONE]
                   -> date_signals                                [DONE]
-                  -> engagement_checks                            [DONE]
-        -> reasoning.generate_findings() (Gemini)               [DONE]
+                  -> entity_signals                               [DONE]
+                  -> engagement_checks                             [DONE]
+                  -> intent_alignment (1 LLM call: assumed intent) [DONE]
+        -> reasoning.generate_findings() (1 LLM call: findings)  [DONE]
    -> AuditReport (findings + summary + observations)            [DONE]
 ```

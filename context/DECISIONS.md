@@ -342,3 +342,36 @@ phone-number false positives (Steps 11) - a loosely specified numeric/text
 pattern reliably produces false positives on general web content. Anchoring
 on a recognizable street-type suffix trades some recall for much higher
 precision, appropriate for a low-stakes supplementary evidence field.
+
+
+
+Decision: Treat intent-to-landing alignment and context retention as ONE
+measurement (intent_alignment.py) rather than two separate checks.
+Reason: Both ask essentially the same underlying question - "does this
+page reinforce what a visitor expected when they arrived?" - just framed
+from slightly different angles in the brief. Building two near-duplicate
+checks against the same evidence would add complexity without adding
+distinct signal, and conflicts with the project's "quality over number of
+findings/checks" principle.
+
+Decision: Source the "assumed intent" for alignment checking from an LLM
+call given ONLY the site's bare domain name - never the page's own title,
+meta description, or body content.
+Reason: Step 9 already identified that guessing intent from the page's own
+content is circular (a page can never misalign with a guess derived from
+itself). A domain-only query forces the LLM to rely on genuine independent
+prior knowledge, and it's explicitly instructed to say so honestly when it
+has none - making "not comparable" a legitimate, informative outcome
+rather than a forced guess.
+
+Decision: Accept a second Gemini call per audit (one for assumed-intent
+generation, one for main findings reasoning) rather than trying to fold
+this into the single existing reasoning call.
+Reason: The assumed-intent query must run with NO page-content context
+(only the domain), while the main reasoning call needs ALL the evidence
+including page content - these are fundamentally different prompts that
+can't be merged without either leaking page content into the "independent"
+query (reintroducing circularity) or omitting evidence from the main
+reasoning call. Two calls is still a small, bounded number per audit, in
+line with the efficiency requirement, which targets per-check/per-element
+calls, not a hard cap of exactly one.

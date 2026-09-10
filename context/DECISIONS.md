@@ -375,3 +375,25 @@ query (reintroducing circularity) or omitting evidence from the main
 reasoning call. Two calls is still a small, bounded number per audit, in
 line with the efficiency requirement, which targets per-check/per-element
 calls, not a hard cap of exactly one.
+
+
+Decision: Scope the pytest suite to pure, deterministic functions only
+(HTML parsing, regex/pattern matching, JSON parsing, schema math) and
+explicitly exclude anything requiring live HTTP, Playwright, Tesseract, or
+Gemini API calls.
+Reason: Network/browser/LLM-dependent tests would be slow, flaky (subject
+to the same real-world variability - timeouts, rate limits - already
+observed manually), consume Gemini free-tier quota on every test run, and
+require significant mocking infrastructure. The highest-value, lowest-cost
+tests are regressions for bugs we've actually hit - three real phone-number
+false positives and reasoning.py's JSON parsing edge cases - which are
+exactly what's covered.
+
+Decision: Add a tests/conftest.py that inserts the project root and every
+skill's scripts/ directory into sys.path, rather than restructuring skills
+into importable packages or duplicating each skill's own import logic
+inside every test file.
+Reason: Mirrors exactly how audit-orchestrator's skill_runner.py already
+loads these modules, and how each script imports its own siblings when run
+standalone - keeps one consistent import strategy across the whole
+project rather than inventing a second one just for tests.

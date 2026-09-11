@@ -12,4 +12,5 @@ node_modules/
 .DS_Store
 Thumbs.db
 crawl_output/
+research_output/
 .cache/

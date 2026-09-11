@@ -397,3 +397,21 @@ Reason: Mirrors exactly how audit-orchestrator's skill_runner.py already
 loads these modules, and how each script imports its own siblings when run
 standalone - keeps one consistent import strategy across the whole
 project rather than inventing a second one just for tests.
+
+
+Decision: Build tools/run_research_batch.py as a standalone script outside
+skills/, rather than as another skill or a pytest-based integration test.
+Reason: This tool exists purely to make Adobe's brief-mandated research
+methodology (test against real sites, find general patterns, never
+hardcode) faster to execute - it isn't part of the marketplace deliverable
+and must never be included in the submission ZIP. Keeping it outside
+skills/ makes that boundary structurally obvious rather than relying on a
+naming convention or a comment.
+
+Decision: Have the batch harness reuse audit-orchestrator's existing
+run_audit() function directly, rather than shelling out to cli.py as a
+subprocess per site.
+Reason: Avoids subprocess overhead and lets the harness work with the
+returned AuditReport object directly (for the summary table) instead of
+re-parsing printed JSON - simpler and more reliable for a tool that's
+purely for internal use.

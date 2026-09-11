@@ -5,41 +5,46 @@ Originally lived inside crawl-render-audit's scripts/fetchers.py (Step 6),
 moved to common/ in Step 8 once freshness-corroboration also needed
 identical raw-HTTP and Playwright-rendering logic.
 
-rendered_browser_session() and rendered_page_session() support a SINGLE
-check opening its own render (used for standalone/CLI invocation of an
-individual script). full_render_session() (Step 12) supports MULTIPLE
-checks sharing ONE render pass - added after real-world testing showed
-5 separate per-audit Playwright sessions against the same page caused
-intermittent timeouts and unnecessary runtime overhead. audit-orchestrator
-uses full_render_session(); each script's own standalone CLI still uses
-rendered_browser_session()/rendered_page_session()/fetch_rendered_html()
-independently, unchanged.
+full_render_session() decouples the raw HTTP fetch from the Playwright
+render pass (Step 16 fix): a real-world research batch run against
+apple.com (and likely other large, media-heavy sites) showed the plain
+httpx fetch of a large homepage exceeding the original 10s timeout, which
+- because it ran BEFORE the browser opened - crashed the entire shared
+render session and took down all 5 rendering-dependent checks, including
+the 4 that never needed raw_html at all (image_checks, date_signals,
+entity_signals, engagement_checks, intent_alignment). Now a raw-fetch
+failure only affects RenderResult.raw_html (set to None, with the error
+recorded), and Playwright rendering still proceeds - render_checks.py and
+structured_data_checks.py already handle raw_html=None by fetching it
+themselves independently.
 
-All rendering functions wait for "load" rather than "networkidle" (see
-Step 9 fix - networkidle is unreliable on sites with continuous background
+All rendering functions wait for "load" rather than "networkidle" (Step 9
+fix - networkidle is unreliable on sites with continuous background
 network activity), plus a short fixed settle delay.
 """
 
 from __future__ import annotations
 
+import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Iterator, Tuple
+from typing import Iterator, Optional, Tuple
 
 import httpx
 from playwright.sync_api import BrowserContext, Page, sync_playwright
 
+logger = logging.getLogger("common.fetch_utils")
+
 USER_AGENT = "BrandAIReadinessAuditor/0.1 (read-only research/hackathon audit bot)"
-HTTP_TIMEOUT_SECONDS = 10.0
+# Increased from 10.0 (Step 16 fix) - large real-world homepages (e.g.
+# apple.com) can take longer than 10s for a plain HTTP client to fully
+# read the response body.
+HTTP_TIMEOUT_SECONDS = 20.0
 RENDER_TIMEOUT_MS = 20_000
 POST_LOAD_SETTLE_MS = 1_500
 DEFAULT_VIEWPORT_WIDTH = 1280
 DEFAULT_VIEWPORT_HEIGHT = 800
 
-# Shared JS used to determine what's actually visible "above the fold" -
-# needs real rendered layout (getBoundingClientRect), which only exists
-# while the page is live in the browser. Used by both engagement_checks.py
-# (standalone) and full_render_session() (shared pass).
 ABOVE_FOLD_TEXT_JS = """
 () => {
   const vh = window.innerHeight || document.documentElement.clientHeight;
@@ -92,10 +97,7 @@ def fetch_rendered_html(url: str) -> str:
 def rendered_browser_session(url: str) -> Iterator[Tuple[str, BrowserContext]]:
     """
     Render `url` and yield (rendered_html, browser_context) while the browser
-    is still open, so callers can fetch additional resources (e.g. images)
-    through context.request - inheriting realistic browser request behavior.
-    Used for standalone/single-check invocation; see full_render_session()
-    for the shared-across-multiple-checks version used by the orchestrator.
+    is still open. Used for standalone/single-check invocation.
     """
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -118,10 +120,8 @@ def rendered_page_session(
 ) -> Iterator[Page]:
     """
     Render `url` at a fixed viewport size and yield the live Page object
-    while the browser is still open, so callers can run page.evaluate() to
-    inspect actual rendered layout (e.g. what's visible above the fold).
-    Used for standalone/single-check invocation; see full_render_session()
-    for the shared-across-multiple-checks version used by the orchestrator.
+    while the browser is still open. Used for standalone/single-check
+    invocation.
     """
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -140,9 +140,16 @@ def rendered_page_session(
 
 @dataclass
 class RenderResult:
-    """Bundle of everything a single shared render pass produces."""
+    """
+    Bundle of everything a single shared render pass produces.
 
-    raw_html: str
+    raw_html is Optional (Step 16 fix): if the plain HTTP fetch fails, this
+    is None and raw_html_error explains why - the Playwright render itself
+    still proceeds regardless, since most checks don't need raw_html at all.
+    """
+
+    raw_html: Optional[str]
+    raw_html_error: Optional[str]
     rendered_html: str
     above_fold_text: str
     context: BrowserContext
@@ -156,19 +163,22 @@ def full_render_session(
 ) -> Iterator[RenderResult]:
     """
     Perform ONE Playwright render of `url` and yield a RenderResult bundling
-    raw HTML (fetched separately and cheaply via httpx), rendered HTML,
-    above-fold visible text, and the live browser context - so multiple
-    specialist checks (render diff, structured data, image OCR, date
-    signals, engagement checks) can share a single render pass instead of
-    each independently launching its own browser and re-navigating to the
-    same URL (Step 12 - added after real-world testing showed 5 separate
-    per-audit Playwright sessions caused intermittent timeouts).
+    raw HTML, rendered HTML, above-fold visible text, and the live browser
+    context - so multiple specialist checks can share a single render pass.
 
-    The browser stays open for the duration of the `with` block, so callers
-    that need to download additional resources (e.g. images, via
-    context.request) can do so before the browser closes.
+    The raw HTTP fetch is decoupled from the Playwright render (Step 16
+    fix): if it fails or times out, raw_html is None and raw_html_error is
+    set, but rendering still proceeds - only render_checks and
+    structured_data_checks actually need raw_html, and both already handle
+    it being None by fetching it themselves independently.
     """
-    raw_html = fetch_raw_html(url)
+    raw_html: Optional[str] = None
+    raw_html_error: Optional[str] = None
+    try:
+        raw_html = fetch_raw_html(url)
+    except httpx.HTTPError as exc:
+        raw_html_error = str(exc)
+        logger.warning("Raw HTML fetch failed for %s (rendering will still proceed): %s", url, exc)
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -184,6 +194,7 @@ def full_render_session(
             above_fold_text = page.evaluate(ABOVE_FOLD_TEXT_JS)
             yield RenderResult(
                 raw_html=raw_html,
+                raw_html_error=raw_html_error,
                 rendered_html=rendered_html,
                 above_fold_text=above_fold_text,
                 context=context,

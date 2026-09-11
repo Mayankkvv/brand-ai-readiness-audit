@@ -415,3 +415,20 @@ Reason: Avoids subprocess overhead and lets the harness work with the
 returned AuditReport object directly (for the summary table) instead of
 re-parsing printed JSON - simpler and more reliable for a tool that's
 purely for internal use.
+
+
+Decision: Do README.md/marketplace.json finalization (originally planned
+later, after full research-batch testing) now, ahead of schedule.
+Reason: Gemini free-tier API quota was exhausted mid-research-batch-testing
+(Step 16), blocking any further LLM-dependent work until it resets. README
+and marketplace.json require zero API calls, so reordering to do them now
+avoids idle time without compromising quality - the research batch (a real
+prerequisite for calling the project "done") remains explicitly tracked as
+incomplete in DEVELOPMENT_STATE.md rather than being skipped.
+
+Decision: Set marketplace.json's version to "0.9.0" rather than "1.0.0".
+Reason: All skills and the orchestrator are feature-complete, but
+multi-site research validation (the actual mechanism for confirming
+generalization, per the brief) is only partially done pending quota reset.
+0.9.0 accurately signals "feature-complete, validation pending" rather
+than overclaiming full readiness.

@@ -1,7 +1,7 @@
 {
   "name": "brand-ai-readiness-audit",
-  "version": "0.1.0",
-  "description": "Agent Skill Marketplace that audits a website for AI discoverability and on-site engagement problems, producing an evidence-backed, prioritized findings report.",
+  "version": "0.9.0",
+  "description": "Agent Skill Marketplace that audits a website for AI discoverability and on-site engagement problems, producing an evidence-backed, prioritized findings report. Read-only; never modifies the audited site.",
   "skills": [
     {
       "id": "audit-orchestrator",

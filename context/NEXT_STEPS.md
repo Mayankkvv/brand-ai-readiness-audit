@@ -1,23 +1,23 @@
 # NEXT STEPS (high-level plan — for orientation only, not a multi-step dump)
 
-1-9. Foundation, all specialist skills' first checks, orchestrator wiring  <-- DONE (Steps 1-9)
-10. Wire audit-orchestrator to call all specialist skills and aggregate
-    Observations  <-- DONE (Step 10)
-11. Integrate Gemini reasoning layer (modular llm/ package)  <-- DONE (Step 11)
-12. Consolidate Playwright renders into one shared pass  <-- DONE (Step 12)
-13. freshness-corroboration: entity identity signals  <-- DONE (Step 13)
-14. engagement-audit: intent-to-landing alignment  <-- DONE (Step 14)
+1-14. Foundation through full skill implementation  <-- DONE (Steps 1-14)
 15. Add pytest test suite  <-- DONE (Step 15)
-16. Build a multi-site research testing harness  <-- DONE (Step 16)
-17. RUN the research batch, review results, refine both Gemini prompts and
-    any checks based on real findings/false positives it surfaces - the
-    actual research step, now that the tooling exists
-18. Cross-finding deduplication - revisit only if repeat/overlapping
-    findings actually appear during Step 17's real testing
-19. Measure and optimize overall runtime to comfortably stay under 5 minutes
-20. Write README.md and finalize marketplace.json
+16. Build a multi-site research testing harness; found and fixed a real
+    raw_html/full_render_session coupling bug via testing (confirmed fixed
+    on apple.com)  <-- DONE (Step 16), testing PARTIALLY complete
+17. Write README.md and finalize marketplace.json  <-- DONE (Step 17,
+    reordered ahead of full research-batch completion due to Gemini quota
+    exhaustion)
+18. RESUME the research batch once Gemini quota resets: run the remaining
+    8 default sites (Nike, Samsung, Notion, HubSpot, MIT, Stanford,
+    Marriott, Reuters), review results, refine prompts/checks based on
+    real findings
+19. Cross-finding deduplication - only if Step 18 actually surfaces
+    repeat/overlapping findings
+20. Measure and optimize overall runtime to comfortably stay under 5 minutes
 21. Package the final submission ZIP - explicitly EXCLUDE tools/,
-    research_output/, .venv/, .env, and other dev-only artifacts
+    research_output/, tests/, pytest.ini, .venv/, .env, context/, and
+    other dev-only artifacts; verify size stays under 50MB
 
 This sequence may change as we learn things during development — update this file
 whenever it does.

@@ -60,6 +60,13 @@ low overlap ratio MAY indicate the page doesn't reinforce visitor expectations
 notable; if llm_knows_entity is false, there is no ground truth to compare
 against, so do not report a finding based on this observation at all.
 
+Some observations describe a SECONDARY page (not the main homepage URL) -
+these have an id starting with "secondary-page-" and include "page_url" and
+"page_category" fields in their data. When a finding is based primarily on
+one of these, set the finding's "affected_pages" field to a list containing
+that specific page_url, so the report clearly attributes the issue to the
+right page rather than implying it affects the whole site.
+
 Critical rules:
 - NEVER invent a fact that isn't present in the observation data you were given.
 - An observation is not automatically a problem. For example: using JavaScript

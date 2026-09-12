@@ -2,25 +2,19 @@
 Shared HTTP/browser fetch helpers used across multiple skills.
 
 Originally lived inside crawl-render-audit's scripts/fetchers.py (Step 6),
-moved to common/ in Step 8 once freshness-corroboration also needed
-identical raw-HTTP and Playwright-rendering logic.
+moved to common/ in Step 8.
 
 full_render_session() decouples the raw HTTP fetch from the Playwright
-render pass (Step 16 fix): a real-world research batch run against
-apple.com (and likely other large, media-heavy sites) showed the plain
-httpx fetch of a large homepage exceeding the original 10s timeout, which
-- because it ran BEFORE the browser opened - crashed the entire shared
-render session and took down all 5 rendering-dependent checks, including
-the 4 that never needed raw_html at all (image_checks, date_signals,
-entity_signals, engagement_checks, intent_alignment). Now a raw-fetch
-failure only affects RenderResult.raw_html (set to None, with the error
-recorded), and Playwright rendering still proceeds - render_checks.py and
-structured_data_checks.py already handle raw_html=None by fetching it
-themselves independently.
+render pass (Step 16 fix - see prior history for detail) and now also
+tracks the page's FINAL URL after any redirects (Step 22 fix): a real-
+world test against notion.so (which redirects to notion.com - a different
+registrable domain, not a subdomain) showed page_discovery.py rejecting
+every real link because it compared them against the pre-redirect
+requested domain instead of the domain the rendered page actually ended
+up on.
 
 All rendering functions wait for "load" rather than "networkidle" (Step 9
-fix - networkidle is unreliable on sites with continuous background
-network activity), plus a short fixed settle delay.
+fix), plus a short fixed settle delay.
 """
 
 from __future__ import annotations
@@ -36,9 +30,6 @@ from playwright.sync_api import BrowserContext, Page, sync_playwright
 logger = logging.getLogger("common.fetch_utils")
 
 USER_AGENT = "BrandAIReadinessAuditor/0.1 (read-only research/hackathon audit bot)"
-# Increased from 10.0 (Step 16 fix) - large real-world homepages (e.g.
-# apple.com) can take longer than 10s for a plain HTTP client to fully
-# read the response body.
 HTTP_TIMEOUT_SECONDS = 20.0
 RENDER_TIMEOUT_MS = 20_000
 POST_LOAD_SETTLE_MS = 1_500
@@ -121,7 +112,8 @@ def rendered_page_session(
     """
     Render `url` at a fixed viewport size and yield the live Page object
     while the browser is still open. Used for standalone/single-check
-    invocation.
+    invocation. Callers can read `page.url` for the final URL after
+    redirects.
     """
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -143,15 +135,18 @@ class RenderResult:
     """
     Bundle of everything a single shared render pass produces.
 
-    raw_html is Optional (Step 16 fix): if the plain HTTP fetch fails, this
-    is None and raw_html_error explains why - the Playwright render itself
-    still proceeds regardless, since most checks don't need raw_html at all.
+    raw_html is Optional (Step 16 fix): a raw-fetch failure doesn't abort
+    rendering. final_url (Step 22 fix) is the page's actual URL AFTER any
+    redirects - Playwright's page.url - needed by page_discovery.py for
+    correct same-domain link matching when the requested URL redirects to
+    a different registrable domain (e.g. notion.so -> notion.com).
     """
 
     raw_html: Optional[str]
     raw_html_error: Optional[str]
     rendered_html: str
     above_fold_text: str
+    final_url: str
     context: BrowserContext
 
 
@@ -163,14 +158,9 @@ def full_render_session(
 ) -> Iterator[RenderResult]:
     """
     Perform ONE Playwright render of `url` and yield a RenderResult bundling
-    raw HTML, rendered HTML, above-fold visible text, and the live browser
-    context - so multiple specialist checks can share a single render pass.
-
-    The raw HTTP fetch is decoupled from the Playwright render (Step 16
-    fix): if it fails or times out, raw_html is None and raw_html_error is
-    set, but rendering still proceeds - only render_checks and
-    structured_data_checks actually need raw_html, and both already handle
-    it being None by fetching it themselves independently.
+    raw HTML, rendered HTML, above-fold visible text, the final URL after
+    redirects, and the live browser context - so multiple specialist
+    checks can share a single render pass.
     """
     raw_html: Optional[str] = None
     raw_html_error: Optional[str] = None
@@ -197,6 +187,7 @@ def full_render_session(
                 raw_html_error=raw_html_error,
                 rendered_html=rendered_html,
                 above_fold_text=above_fold_text,
+                final_url=page.url,
                 context=context,
             )
         finally:

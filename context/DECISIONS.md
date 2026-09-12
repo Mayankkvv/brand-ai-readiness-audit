@@ -462,3 +462,52 @@ candidate pages, the implementation deliberately errs toward excluding a
 borderline match, consistent with the "safe by default" / respectful-
 crawling principle - worth being conservative here rather than risking a
 disallowed crawl.
+
+
+Decision: Cap actual secondary-page audits at MAX_PAGES_TO_AUDIT=2, distinct
+from page_discovery's own discovery cap of 5.
+Reason: Each secondary page audit needs its own Playwright browser launch
+(discovery finding 5 candidates doesn't mean auditing 5 is free). 2 is a
+deliberately conservative runtime-budget choice, leaving comfortable
+margin under the 5-minute limit even on top of homepage checks; can be
+raised later if real-world timing data shows headroom.
+
+Decision: Run only render_checks and structured_data_checks against
+secondary pages - explicitly NOT image_checks (OCR), date_signals,
+entity_signals, engagement_checks, or intent_alignment.
+Reason: OCR/Tesseract is comparatively slow per page and less central to
+the multi-page use case. Date/entity signals are site-identity-level
+facts, not really per-page questions. Engagement/intent-alignment checks
+are specifically about a visitor's FIRST landing experience (the
+homepage, in this system's model) - running them per secondary page would
+also add Gemini calls per page, which conflicts directly with the
+confirmed 20-requests/day quota.
+
+Decision: Secondary-page checks produce zero additional Gemini calls -
+their Observations feed into the SAME single existing main reasoning
+call, distinguished by a "secondary-page-" id prefix and page_url/
+page_category fields in their data.
+Reason: Keeps total Gemini usage per audit fixed at exactly 2 calls
+(intent_alignment + main reasoning) no matter how many pages are
+examined - critical given the now-confirmed free-tier daily limit of 20
+requests (~10 audits/day/key). Adding even one more call per secondary
+page would make heavier audits meaningfully more quota-expensive.
+
+Decision: Update reasoning.py's prompt to use the Finding schema's
+existing (previously unused) "affected_pages" field for findings based on
+secondary-page evidence, rather than adding a new schema field.
+Reason: common/schema.py already defined affected_pages as an optional
+Finding field back in Step 3, anticipating exactly this need. Using it now
+rather than inventing something new keeps the schema stable and avoids
+unnecessary churn.
+
+
+Decision: Use the page's actual final URL after redirects (Playwright's
+page.url, exposed as RenderResult.final_url) as the domain-matching
+baseline in page_discovery.py, rather than the originally requested URL.
+Reason: Real-world testing on notion.so (which redirects to notion.com -
+a different registrable domain, not a subdomain relationship) showed
+every genuine internal link being rejected because same-domain matching
+compared against the stale pre-redirect domain. This generalizes beyond
+Notion - any site redirecting to a different domain (bare domain to www,
+or one brand domain to another) would hit the same bug.

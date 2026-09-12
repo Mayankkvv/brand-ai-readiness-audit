@@ -1,27 +1,28 @@
 """
 Representative internal page discovery for the crawl-render-audit skill.
 
-Implements the Adobe brief's crawling strategy (Section 22): rather than
-auditing only the homepage, identify a small, BOUNDED set of representative
-internal pages - about, pricing, products/services, contact, docs - so the
-audit can catch problems that only show up on those pages (e.g. the
-brief's own worked example: a product page's price missing from structured
-data, which the homepage alone would never reveal).
+Implements the Adobe brief's crawling strategy (Section 22): identify a
+small, bounded set of representative internal pages (about, pricing,
+products/services, contact, docs) so the audit can catch problems that
+only show up on those pages.
 
-This is discovery ONLY (Step 21): it finds and categorizes candidate URLs
-from the homepage's own internal links. It does NOT yet run other checks
-against those pages - that wiring is a separate, later step, kept
-deliberately out of this one so runtime/budget tradeoffs (running 7 checks
-against 5+ pages) get their own careful design rather than being rushed in.
+Uses the page's FINAL URL after any redirects (not the originally
+requested URL) as the basis for same-domain link matching and relative-
+link resolution - fixed after real-world testing on notion.so (which
+redirects to notion.com, a DIFFERENT registrable domain, not a subdomain)
+showed every real link being incorrectly rejected because it was compared
+against the pre-redirect domain instead of the domain the page actually
+ended up on.
+
+This is discovery ONLY: it finds and categorizes candidate URLs. Auditing
+those pages happens elsewhere (audit-orchestrator/scripts/skill_runner.py).
 
 Generalization note: categories are matched via generic keyword fragments
-(e.g. "about", "pricing", "contact") against link text and URL path -
-never hardcoded to any specific site's actual page names, per the brief's
-explicit anti-overfitting requirement (Sections 25-26).
+against link text and URL path - never hardcoded to a specific site.
 
-Respects robots.txt: candidate URLs matching a disallowed path pattern
-(collected by access_checks.py) are excluded. Only same-registrable-domain
-links are considered - this never follows off-site links.
+Respects robots.txt: candidate URLs matching a disallowed path pattern are
+excluded. Only same-registrable-domain links (relative to the page's ACTUAL
+final domain) are considered.
 """
 
 from __future__ import annotations
@@ -41,17 +42,13 @@ from playwright.sync_api import Error as PlaywrightError
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from common.fetch_utils import fetch_rendered_html  # noqa: E402
+from common.fetch_utils import rendered_page_session  # noqa: E402
 from common.schema import Observation  # noqa: E402
 from common.url_utils import validate_and_normalize_url  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger("crawl-render-audit.page_discovery")
 
-# Ordered per the brief's own suggested priority (Section 22): about,
-# products, services, pricing, contact, documentation. Each category maps
-# to generic keyword fragments checked against both the link's URL path
-# and its visible text - never a specific site's real page name.
 CATEGORY_KEYWORDS: Dict[str, List[str]] = {
     "about": ["about", "who-we-are", "our-story", "company"],
     "products": ["product", "shop", "store", "catalog"],
@@ -72,14 +69,7 @@ def _same_registrable_domain(candidate_netloc: str, base_netloc: str) -> bool:
 
 
 def _is_disallowed(path: str, disallowed_paths: List[str]) -> bool:
-    """
-    Approximate robots.txt matching using fnmatch, treating '*' as a
-    wildcard (many real robots.txt files use extended '*' patterns beyond
-    the original spec - e.g. apple.com's robots.txt uses patterns like
-    "/*shop/browse/overlay/*"). This is a conservative heuristic, not a
-    full RFC-9309 implementation - erring on the side of excluding a
-    candidate rather than risking a disallowed crawl.
-    """
+    """Approximate robots.txt matching, treating '*' as a wildcard."""
     for pattern in disallowed_paths:
         if not pattern:
             continue
@@ -100,22 +90,24 @@ def _categorize_link(href_path: str, link_text: str) -> Optional[str]:
 
 
 def discover_representative_pages(
-    homepage_url: str,
+    base_url: str,
     rendered_html: str,
     disallowed_paths: Optional[List[str]] = None,
     max_additional_pages: int = MAX_ADDITIONAL_PAGES,
 ) -> List[Dict[str, str]]:
     """
     Find a bounded, categorized set of representative internal pages
-    linked from the homepage. Returns a list of
-    {"url", "category", "link_text"} dicts, in the brief's suggested
-    priority order, deduplicated by category (first match wins) and by URL.
+    linked from the page at `base_url`. `base_url` MUST be the page's
+    actual final URL (after any redirects) for correct domain matching -
+    see run_page_discovery(). Returns a list of
+    {"url", "category", "link_text"} dicts, deduplicated by category
+    (first match wins) and by URL, in the brief's suggested priority order.
     """
     disallowed_paths = disallowed_paths or []
-    base_netloc = urlparse(homepage_url).netloc
+    base_netloc = urlparse(base_url).netloc
 
     soup = BeautifulSoup(rendered_html, "html.parser")
-    seen_urls: set[str] = {homepage_url}
+    seen_urls: set[str] = {base_url}
     seen_categories: set[str] = set()
     candidates: List[Dict[str, str]] = []
 
@@ -124,7 +116,7 @@ def discover_representative_pages(
         if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
             continue
 
-        absolute_url = urljoin(homepage_url, href).split("#")[0]
+        absolute_url = urljoin(base_url, href).split("#")[0]
         parsed = urlparse(absolute_url)
 
         if not _same_registrable_domain(parsed.netloc, base_netloc):
@@ -146,7 +138,6 @@ def discover_representative_pages(
         if len(candidates) >= max_additional_pages:
             break
 
-    # Return in the brief's suggested priority order, not discovery order.
     priority_order = list(CATEGORY_KEYWORDS.keys())
     candidates.sort(key=lambda c: priority_order.index(c["category"]))
     return candidates
@@ -156,19 +147,28 @@ def run_page_discovery(
     url: str,
     *,
     rendered_html: Optional[str] = None,
+    final_url: Optional[str] = None,
     disallowed_paths: Optional[List[str]] = None,
 ) -> Observation:
     """
     Discover representative internal pages for a URL and return an
-    Observation. If rendered_html is provided (e.g. by audit-orchestrator's
-    shared render pass), it's used directly instead of fetching
-    independently.
+    Observation.
+
+    `final_url` (e.g. from audit-orchestrator's shared render pass, via
+    RenderResult.final_url) should be the page's ACTUAL URL after any
+    redirects - required for correct domain matching if the requested URL
+    redirects to a different registrable domain. If rendered_html is
+    provided but final_url is not, this falls back to the requested
+    (possibly pre-redirect) URL, which may under-discover pages on
+    redirecting sites.
     """
     normalized_url = validate_and_normalize_url(url)
 
     if rendered_html is None:
         try:
-            rendered_html = fetch_rendered_html(normalized_url)
+            with rendered_page_session(normalized_url) as page:
+                rendered_html = page.content()
+                final_url = page.url
         except PlaywrightError as exc:
             logger.warning("Rendering failed for %s: %s", normalized_url, exc)
             return Observation(
@@ -179,8 +179,9 @@ def run_page_discovery(
                 data={"checked": False, "error": f"render failed: {exc}"},
             )
 
+    effective_base_url = final_url or normalized_url
     candidates = discover_representative_pages(
-        normalized_url, rendered_html, disallowed_paths=disallowed_paths
+        effective_base_url, rendered_html, disallowed_paths=disallowed_paths
     )
 
     return Observation(
@@ -191,12 +192,9 @@ def run_page_discovery(
         data={
             "checked": True,
             "error": None,
-            "homepage_url": normalized_url,
+            "requested_url": normalized_url,
+            "homepage_url": effective_base_url,
             "discovered_pages": candidates,
-            "note": (
-                "Discovery only (Step 21) - these pages are not yet individually "
-                "audited by other checks. That wiring is a planned follow-up step."
-            ),
         },
     )
 

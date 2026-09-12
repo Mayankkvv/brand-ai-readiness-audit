@@ -23,9 +23,16 @@ Python package names, so shared code lives outside `skills/`):
   independently (no rendering needed), then opens ONE shared
   `common.fetch_utils.full_render_session()` and passes its raw_html/
   rendered_html/above_fold_text/context to render_checks,
-  structured_data_checks, image_checks, date_signals, and
-  engagement_checks - each still individually fault-isolated. If the
-  shared render itself fails, all 5 become error Observations.
+  structured_data_checks, image_checks, page_discovery, date_signals,
+  entity_signals, engagement_checks, and intent_alignment for the
+  HOMEPAGE - each individually fault-isolated. Then (Step 22) audits up
+  to MAX_PAGES_TO_AUDIT=2 of page_discovery's discovered secondary pages
+  via `_run_secondary_page_checks()` - a lighter render-diff +
+  structured-data-only check, each with its own independent render, no
+  additional LLM calls. If the shared homepage render itself fails, all 8
+  homepage-dependent checks become error Observations, but access_checks
+  and (if pages were somehow still discovered) secondary-page checks are
+  unaffected by that specific failure path.
 - `reasoning.py::generate_findings()` — sends aggregated Observations to
   the LLM, validates/normalizes the response into Findings.
 - `cli.py::run_audit()` — validates the URL, runs skill_runner, runs

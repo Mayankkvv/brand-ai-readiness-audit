@@ -1,23 +1,24 @@
 # NEXT STEPS (high-level plan — for orientation only, not a multi-step dump)
 
-1-14. Foundation through full skill implementation  <-- DONE (Steps 1-14)
-15. Add pytest test suite  <-- DONE (Step 15)
-16. Build a multi-site research testing harness; found and fixed a real
-    raw_html/full_render_session coupling bug via testing (confirmed fixed
-    on apple.com)  <-- DONE (Step 16), testing PARTIALLY complete
-17. Write README.md and finalize marketplace.json  <-- DONE (Step 17,
-    reordered ahead of full research-batch completion due to Gemini quota
-    exhaustion)
-18. RESUME the research batch once Gemini quota resets: run the remaining
-    8 default sites (Nike, Samsung, Notion, HubSpot, MIT, Stanford,
-    Marriott, Reuters), review results, refine prompts/checks based on
-    real findings
-19. Cross-finding deduplication - only if Step 18 actually surfaces
-    repeat/overlapping findings
-20. Measure and optimize overall runtime to comfortably stay under 5 minutes
-21. Package the final submission ZIP - explicitly EXCLUDE tools/,
-    research_output/, tests/, pytest.ini, .venv/, .env, context/, and
-    other dev-only artifacts; verify size stays under 50MB
+1-20. Foundation through full research-batch validation and packaging tool  <-- DONE (Steps 1-20)
+21. Multi-page crawling, part 1: representative page discovery
+    (about/pricing/products/services/contact/docs, keyword-based,
+    robots.txt-aware)  <-- DONE (Step 21, discovery only)
+22. Multi-page crawling, part 2: wire discovered pages into actual
+    per-page auditing, with a runtime budget decision (e.g. full checks
+    on homepage, lighter checks on secondary pages) - HIGH PRIORITY,
+    explicit brief requirement (Section 22)
+23. Proactive recommendations when nothing critical is found - HIGH
+    PRIORITY, explicit brief requirement (Section 15), currently
+    contradicted by the reasoning prompt
+24. Cross-finding deduplication - named brief requirement (Section 6),
+    currently deferred as not-yet-needed
+25. Actually run tools/package_submission.py and verify the real ZIP
+    (contents, size under 50MB)
+26. End-to-end sanity check: unzip the package elsewhere, confirm cli.py
+    runs correctly from the extracted copy alone
+27. Optional polish: references/ folders (currently empty across all 4
+    skills), robots.txt duplicate-path cosmetic fix
 
 This sequence may change as we learn things during development — update this file
 whenever it does.

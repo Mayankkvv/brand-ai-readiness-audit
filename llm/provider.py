@@ -16,7 +16,7 @@ from abc import ABC, abstractmethod
 
 from dotenv import load_dotenv
 
-load_dotenv()  # loads .env if present; a safe no-op if it doesn't exist
+load_dotenv(override=True)  # loads .env, overriding any existing OS environment variables
 
 
 class ProviderConfigError(Exception):
@@ -51,12 +51,13 @@ def get_provider() -> LLMProvider:
         # who configures a different provider in the future.
         from llm.gemini import GeminiProvider
 
-        api_key = os.environ.get("GEMINI_API_KEY")
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
         if not api_key:
             raise ProviderConfigError(
                 "GEMINI_API_KEY is not set. Copy .env.example to .env and add "
                 "your key, or set the environment variable directly."
             )
+        os.environ["GOOGLE_API_KEY"] = api_key
         #model_name = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
         model_name = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
         return GeminiProvider(api_key=api_key, model_name=model_name)

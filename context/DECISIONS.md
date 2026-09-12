@@ -432,3 +432,33 @@ multi-site research validation (the actual mechanism for confirming
 generalization, per the brief) is only partially done pending quota reset.
 0.9.0 accurately signals "feature-complete, validation pending" rather
 than overclaiming full readiness.
+
+
+Decision: Split multi-page crawling into two steps - discovery (Step 21)
+then per-page auditing (planned follow-up) - rather than building both at
+once.
+Reason: Running all 7 rendering-dependent checks against 5+ discovered
+pages per audit could meaningfully threaten the 5-minute runtime budget,
+and deciding how to budget that (e.g. full checks on homepage only,
+lighter checks on secondary pages) is a real design decision that
+deserves its own dedicated step rather than being bundled into "just find
+some more pages," per the project's "build one capability at a time" rule.
+
+Decision: Categorize discovered pages using generic keyword-fragment
+matching against URL path AND link text (e.g. "pricing", "contact"),
+rather than any site-specific selector or heuristic tuned to a particular
+site's navigation structure.
+Reason: Direct requirement from the brief's anti-overfitting guidance
+(Sections 25-26) - the marketplace is evaluated on unseen websites, so any
+site-specific pattern would fail to generalize.
+
+Decision: Use `fnmatch` for approximate robots.txt wildcard matching in
+page_discovery.py's disallow filtering, rather than a full RFC-9309
+robots.txt parser.
+Reason: Real robots.txt files (e.g. apple.com's) use extended '*' wildcard
+patterns beyond the base robots.txt spec. fnmatch handles this reasonably
+well as a heuristic. Given the choice between under- and over-excluding
+candidate pages, the implementation deliberately errs toward excluding a
+borderline match, consistent with the "safe by default" / respectful-
+crawling principle - worth being conservative here rather than risking a
+disallowed crawl.

@@ -62,6 +62,13 @@ with backoff before giving up.
   Accepts optional pre-fetched raw_html/rendered_html.
 - `image_checks.py` — OCRs content images via Tesseract. Accepts optional
   pre-rendered rendered_html/context.
+- `page_discovery.py::discover_representative_pages()` — finds a bounded,
+  categorized set of internal pages (about/pricing/products/services/
+  contact/docs) from the homepage's own links, via generic keyword
+  matching (never site-specific), respecting robots.txt disallow rules.
+  DISCOVERY ONLY as of Step 21 - discovered pages are not yet run through
+  any other check. Full per-page auditing (with a runtime budget) is a
+  planned follow-up.
 
 ## freshness-corroboration (scope-complete, aside from external corroboration)
 `skills/freshness-corroboration/scripts/`:

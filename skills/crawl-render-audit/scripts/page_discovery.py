@@ -3,26 +3,36 @@ Representative internal page discovery for the crawl-render-audit skill.
 
 Implements the Adobe brief's crawling strategy (Section 22): identify a
 small, bounded set of representative internal pages (about, pricing,
-products/services, contact, docs) so the audit can catch problems that
-only show up on those pages.
+products/services, contact, docs).
 
 Uses the page's FINAL URL after any redirects (not the originally
-requested URL) as the basis for same-domain link matching and relative-
-link resolution - fixed after real-world testing on notion.so (which
-redirects to notion.com, a DIFFERENT registrable domain, not a subdomain)
-showed every real link being incorrectly rejected because it was compared
-against the pre-redirect domain instead of the domain the page actually
-ended up on.
+requested URL) as the basis for same-domain link matching (Step 22 fix -
+see prior history for detail on the notion.so -> notion.com case).
+
+Category matching (Step 24 refinement) uses TWO separate keyword sets:
+- PATH_KEYWORDS, matched against the candidate URL's path - a strong
+  signal, since "/about" or "/pricing" appearing in a URL path is rarely
+  accidental.
+- TEXT_KEYWORDS, matched against the link's visible text - a weaker
+  signal, so ambiguous categories (especially "about") use specific
+  multi-word phrases ("about us", "who we are") rather than a bare
+  single word. Found necessary via real-world testing on samsung.com,
+  where a promotional link reading "All about Galaxy" was incorrectly
+  matched as an About-Us page under the original single-word "about"
+  keyword - the word "about" is common in ordinary English sentences and
+  is a weak signal on its own, unlike in a URL path.
+
+A category matches if EITHER the path or the text keyword set fires.
 
 This is discovery ONLY: it finds and categorizes candidate URLs. Auditing
 those pages happens elsewhere (audit-orchestrator/scripts/skill_runner.py).
 
-Generalization note: categories are matched via generic keyword fragments
-against link text and URL path - never hardcoded to a specific site.
+Generalization note: all keywords are generic fragments/phrases - never
+hardcoded to a specific site.
 
-Respects robots.txt: candidate URLs matching a disallowed path pattern are
-excluded. Only same-registrable-domain links (relative to the page's ACTUAL
-final domain) are considered.
+Respects robots.txt: candidate URLs matching a disallowed path pattern
+(from the User-agent group that actually applies to us - see
+access_checks.py's Step 23 grouping fix) are excluded.
 """
 
 from __future__ import annotations
@@ -33,7 +43,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
@@ -49,7 +59,9 @@ from common.url_utils import validate_and_normalize_url  # noqa: E402
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger("crawl-render-audit.page_discovery")
 
-CATEGORY_KEYWORDS: Dict[str, List[str]] = {
+# Matched against the candidate URL's PATH only. Strong signal - a path
+# fragment is rarely coincidental the way an ordinary English word is.
+PATH_KEYWORDS: Dict[str, List[str]] = {
     "about": ["about", "who-we-are", "our-story", "company"],
     "products": ["product", "shop", "store", "catalog"],
     "services": ["service", "solutions"],
@@ -58,6 +70,20 @@ CATEGORY_KEYWORDS: Dict[str, List[str]] = {
     "documentation": ["docs", "documentation", "developer", "api-reference"],
 }
 
+# Matched against the link's visible TEXT only. Weaker signal, so
+# ambiguous categories (especially "about") require specific multi-word
+# phrases rather than a bare word that could appear in ordinary marketing
+# copy (e.g. "All about Galaxy").
+TEXT_KEYWORDS: Dict[str, List[str]] = {
+    "about": ["about us", "who we are", "our story", "company profile", "about the company"],
+    "products": ["products", "our products", "shop now"],
+    "services": ["services", "our services"],
+    "pricing": ["pricing", "plans", "price list"],
+    "contact": ["contact us", "get in touch", "contact sales", "support"],
+    "documentation": ["documentation", "developer docs", "api reference", "developers"],
+}
+
+CATEGORY_PRIORITY_ORDER = list(PATH_KEYWORDS.keys())
 MAX_ADDITIONAL_PAGES = 5
 
 
@@ -81,12 +107,24 @@ def _is_disallowed(path: str, disallowed_paths: List[str]) -> bool:
     return False
 
 
-def _categorize_link(href_path: str, link_text: str) -> Optional[str]:
-    haystack = f"{href_path} {link_text}".lower()
-    for category, keywords in CATEGORY_KEYWORDS.items():
-        if any(keyword in haystack for keyword in keywords):
-            return category
-    return None
+def _categorize_link(href_path: str, link_text: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Categorize a link by checking PATH_KEYWORDS against the URL path
+    first (strong signal), then TEXT_KEYWORDS against the link text
+    (weaker signal, more specific phrases). Returns (category, matched_via)
+    or (None, None) if nothing matches.
+    """
+    path_lower = href_path.lower()
+    for category, keywords in PATH_KEYWORDS.items():
+        if any(keyword in path_lower for keyword in keywords):
+            return category, "path"
+
+    text_lower = link_text.lower()
+    for category, keywords in TEXT_KEYWORDS.items():
+        if any(keyword in text_lower for keyword in keywords):
+            return category, "link_text"
+
+    return None, None
 
 
 def discover_representative_pages(
@@ -98,10 +136,10 @@ def discover_representative_pages(
     """
     Find a bounded, categorized set of representative internal pages
     linked from the page at `base_url`. `base_url` MUST be the page's
-    actual final URL (after any redirects) for correct domain matching -
-    see run_page_discovery(). Returns a list of
-    {"url", "category", "link_text"} dicts, deduplicated by category
-    (first match wins) and by URL, in the brief's suggested priority order.
+    actual final URL (after any redirects) for correct domain matching.
+    Returns a list of {"url", "category", "link_text", "matched_via"}
+    dicts, deduplicated by category (first match wins) and by URL, in the
+    brief's suggested priority order.
     """
     disallowed_paths = disallowed_paths or []
     base_netloc = urlparse(base_url).netloc
@@ -127,19 +165,25 @@ def discover_representative_pages(
             continue
 
         link_text = a.get_text(strip=True)
-        category = _categorize_link(parsed.path, link_text)
+        category, matched_via = _categorize_link(parsed.path, link_text)
         if category is None or category in seen_categories:
             continue
 
         seen_urls.add(absolute_url)
         seen_categories.add(category)
-        candidates.append({"url": absolute_url, "category": category, "link_text": link_text})
+        candidates.append(
+            {
+                "url": absolute_url,
+                "category": category,
+                "link_text": link_text,
+                "matched_via": matched_via,
+            }
+        )
 
         if len(candidates) >= max_additional_pages:
             break
 
-    priority_order = list(CATEGORY_KEYWORDS.keys())
-    candidates.sort(key=lambda c: priority_order.index(c["category"]))
+    candidates.sort(key=lambda c: CATEGORY_PRIORITY_ORDER.index(c["category"]))
     return candidates
 
 
@@ -157,10 +201,7 @@ def run_page_discovery(
     `final_url` (e.g. from audit-orchestrator's shared render pass, via
     RenderResult.final_url) should be the page's ACTUAL URL after any
     redirects - required for correct domain matching if the requested URL
-    redirects to a different registrable domain. If rendered_html is
-    provided but final_url is not, this falls back to the requested
-    (possibly pre-redirect) URL, which may under-discover pages on
-    redirecting sites.
+    redirects to a different registrable domain.
     """
     normalized_url = validate_and_normalize_url(url)
 

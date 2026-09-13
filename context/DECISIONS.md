@@ -511,3 +511,47 @@ every genuine internal link being rejected because same-domain matching
 compared against the stale pre-redirect domain. This generalizes beyond
 Notion - any site redirecting to a different domain (bare domain to www,
 or one brand domain to another) would hit the same bug.
+
+
+Decision: Implement proactive recommendations as a prompt instruction in
+reasoning.py's SYSTEM_INSTRUCTION, rather than a code-level fallback that
+synthesizes a generic finding when the LLM returns an empty list.
+Reason: A hardcoded fallback recommendation would necessarily be generic
+("consider adding structured data") regardless of the specific site being
+audited - directly against the brief's requirement that proactive
+recommendations be "relevant and non-obvious, not generic filler."
+Keeping this in the LLM's reasoning (which already has full access to the
+site's actual observations) lets each proactive finding stay genuinely
+evidence-grounded and site-specific, consistent with how every other
+finding is produced.
+
+Decision: Use severity "informational" and category "proactive" to
+distinguish proactive recommendations from actual problems in the report.
+Reason: Both fields already existed in common/schema.py (informational has
+been a valid Severity value since Step 3; category has been an optional
+Finding field since Step 3) - no schema changes needed, and a report
+reader can immediately tell "this is a suggestion" apart from "this is a
+problem" via the existing summary counts.
+
+
+Decision: Rewrite access_checks.py's robots.txt parser to be User-agent-
+group-aware (per RFC 9309's group model), rather than a flat scan of every
+Disallow line in the file.
+Reason: Real-world testing on samsung.com showed a flat scan blending
+multiple User-agent blocks together, so a Disallow rule scoped to one
+specific bot (or a restrictive "*" catch-all meant to be overridden by
+named-bot allowances) got applied as if it blocked every crawler
+universally. Since "/" is a prefix of every path, this single flattening
+bug caused page_discovery.py to silently reject every candidate link on
+the entire site - and, via reasoning.py, produced a finding (F-001)
+alleging the site blocks AI crawlers, which may or may not have been
+accurate given the real, ungrouped robots.txt structure.
+
+Decision: Deliberately do NOT implement full Allow/Disallow precedence
+resolution (RFC 9309's longest-match-wins rule) in the robots.txt grouping fix.
+Reason: Proper precedence resolution is meaningfully more complex (path-
+specificity comparison between competing Allow/Disallow rules) and wasn't
+needed to fix the demonstrated bug (group blending). User-agent grouping
+alone - selecting the one applicable group rather than merging all of them
+- addresses the actual failure mode observed. Full precedence can be
+revisited if future testing shows it's needed.

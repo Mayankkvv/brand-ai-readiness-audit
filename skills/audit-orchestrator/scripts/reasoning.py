@@ -5,7 +5,10 @@ Sends the full set of aggregated Observations to the configured LLM
 provider (llm/provider.py) and asks it to produce a small number of high
 quality, evidence-backed Findings, following the Adobe brief's rules:
 evidence required, avoid false positives, prefer fewer/stronger findings,
-and never invent evidence beyond what the observations actually contain.
+never invent evidence beyond what the observations actually contain - AND
+(Step 23) never stop at "no problems found": if nothing rises to a real
+problem, at least one specific, evidence-grounded proactive improvement
+must still be returned.
 
 The LLM only ever sees the structured facts already collected
 deterministically by the specialist skills - it does not crawl anything
@@ -75,24 +78,36 @@ Critical rules:
   automatically bad - only report it if it's clearly relevant to the page.
   A missing date is evidence of lower transparency, not proof of staleness.
 - Prefer FEWER, STRONGER findings over many generic ones. Return at most
-  8 findings. If the evidence doesn't support any real problem, return an
-  empty JSON array - do not invent a finding just to have something to say.
+  8 findings for actual problems (severity "critical"/"high"/"medium"/"low").
 - Every finding's "evidence" field must cite specific facts/numbers actually
   present in the observations (URLs, counts, ratios, sample text, etc.).
 - Do not flag an observation that already succeeded with no notable gap
   (e.g. checked=true and no red flags in the data).
 
+IMPORTANT - never stop at "no problems found": if, after careful review, none
+of the observations support a genuine problem, you MUST still return exactly
+ONE finding with severity "informational" and "category": "proactive",
+recommending a SPECIFIC, evidence-grounded improvement that would strengthen
+this particular site's AI discoverability or engagement - never a generic,
+one-size-fits-all suggestion. Ground it in something actually present (or
+notably absent) in the observations you were given - e.g. an entity-identity
+signal that could be made more explicit, a freshness signal that could be
+added, a structured-data type that could be introduced for this page's
+apparent purpose. This proactive finding still needs a real "evidence" field
+explaining what in the observations motivates the suggestion. Only skip this
+proactive finding if you already returned at least one other finding above.
+
 Return ONLY a JSON array (no markdown, no code fences, no commentary before
-or after it). Each array item must be an object with exactly these fields:
+or after it) - it must contain at least one item; it must never be empty.
+Each array item must be an object with exactly these fields:
 - "title": short string
 - "severity": one of "critical", "high", "medium", "low", "informational"
 - "evidence": string citing specific facts from the observations
 - "suggested_action": object with "summary" (string) and "priority" (one of
   "critical", "high", "medium", "low")
-- "category": short string (optional)
+- "category": short string (optional, but required as "proactive" for the
+  no-problems-found case described above)
 - "confidence": number between 0 and 1 (optional)
-
-If there is nothing substantial to report, return: []
 """
 
 
@@ -164,6 +179,13 @@ def _parse_findings(raw_text: str) -> List[Finding]:
                 confidence=draft.confidence,
             )
         )
+
+    if not findings:
+        logger.warning(
+            "LLM returned zero valid findings - expected at least one proactive "
+            "finding per the 'never stop at no problems found' instruction."
+        )
+
     return findings
 
 
